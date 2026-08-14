@@ -1,0 +1,291 @@
+import React, { useState, useEffect } from 'react';
+import { VoiceSettings, FridayPersonality } from '../types/friday';
+import { X, Mic, Volume2, Sliders, Sparkles, Globe, Keyboard, Check, VolumeX } from 'lucide-react';
+import { soundEffects } from '../services/audioEffects';
+
+interface SettingsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  settings: VoiceSettings;
+  onSaveSettings: (settings: VoiceSettings) => void;
+  onTestVoice: (text: string) => void;
+}
+
+export const SettingsModal: React.FC<SettingsModalProps> = ({
+  isOpen,
+  onClose,
+  settings,
+  onSaveSettings,
+  onTestVoice
+}) => {
+  const [localSettings, setLocalSettings] = useState<VoiceSettings>(settings);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+
+  useEffect(() => {
+    setLocalSettings(settings);
+  }, [settings]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      const loadVoices = () => {
+        const voices = window.speechSynthesis.getVoices();
+        setAvailableVoices(voices);
+      };
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }, []);
+
+  if (!isOpen) return null;
+
+  const handleSave = () => {
+    soundEffects.playAcknowledge();
+    onSaveSettings(localSettings);
+    onClose();
+  };
+
+  const handleTestTTS = () => {
+    onTestVoice(`Voice calibration confirmed. I am operating with ${localSettings.personality} executive protocols, speaking at rate ${localSettings.rate.toFixed(2)}.`);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+      <div className="bg-zinc-950 border border-sky-500/30 rounded-2xl max-w-xl w-full shadow-[0_0_50px_rgba(14,165,233,0.2)] overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Modal Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/60">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 bg-sky-500/10 rounded-lg">
+              <Sliders className="w-4 h-4 text-sky-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-100 uppercase tracking-wider font-mono">
+                FRIDAY Neural Voice & System Configuration
+              </h3>
+              <p className="text-[11px] text-zinc-400">Wake word, acoustic tuning, and executive personality</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Form Body */}
+        <div className="p-6 space-y-5 overflow-y-auto">
+          {/* Wake Word Configuration */}
+          <div className="space-y-2">
+            <label className="text-xs font-mono text-zinc-300 uppercase tracking-wider flex items-center justify-between">
+              <span className="flex items-center">
+                <Mic className="w-3.5 h-3.5 text-sky-400 mr-1.5" />
+                Wake Word Activation
+              </span>
+              <span className="text-[10px] text-zinc-500 font-normal">Continuous background listening</span>
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {['Hey Friday', 'FRIDAY', 'Jarvis'].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setLocalSettings({ ...localSettings, wakeWord: preset })}
+                  className={`p-2 rounded-lg text-xs font-mono border transition-all cursor-pointer ${
+                    localSettings.wakeWord === preset
+                      ? 'bg-sky-950/60 border-sky-500 text-sky-300 shadow-[0_0_10px_rgba(14,165,233,0.2)]'
+                      : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  "{preset}"
+                </button>
+              ))}
+            </div>
+            <div className="mt-2">
+              <input
+                type="text"
+                value={localSettings.wakeWord}
+                onChange={(e) => setLocalSettings({ ...localSettings, wakeWord: e.target.value })}
+                placeholder="Or type custom wake word..."
+                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-200 focus:outline-none focus:border-sky-500"
+              />
+            </div>
+          </div>
+
+          {/* Personality Style */}
+          <div className="space-y-2">
+            <label className="text-xs font-mono text-zinc-300 uppercase tracking-wider flex items-center">
+              <Sparkles className="w-3.5 h-3.5 text-purple-400 mr-1.5" />
+              Executive Assistant Personality
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { id: 'professional', label: 'Professional', desc: 'Poised & capable' },
+                { id: 'concise', label: 'Concise', desc: 'Ultra-fast bullet points' },
+                { id: 'warm', label: 'Warm', desc: 'Attentive & courteous' },
+                { id: 'executive', label: 'Chief of Staff', desc: 'High-leverage action items' },
+              ].map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setLocalSettings({ ...localSettings, personality: p.id as FridayPersonality })}
+                  className={`p-2.5 rounded-lg text-left border transition-all cursor-pointer ${
+                    localSettings.personality === p.id
+                      ? 'bg-purple-950/60 border-purple-500 text-purple-200 shadow-[0_0_10px_rgba(168,85,247,0.2)]'
+                      : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  <p className="text-xs font-semibold">{p.label}</p>
+                  <p className="text-[10px] opacity-70 mt-0.5">{p.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* TTS Voice Selection & Tuning */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-mono text-zinc-300 uppercase tracking-wider flex items-center">
+                <Volume2 className="w-3.5 h-3.5 text-cyan-400 mr-1.5" />
+                Text-To-Speech (TTS) Voice Engine
+              </label>
+              <button
+                type="button"
+                onClick={handleTestTTS}
+                className="text-xs text-sky-400 hover:text-sky-300 underline font-mono"
+              >
+                Test Voice Sample
+              </button>
+            </div>
+
+            <select
+              value={localSettings.voiceName}
+              onChange={(e) => setLocalSettings({ ...localSettings, voiceName: e.target.value })}
+              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-200 focus:outline-none focus:border-sky-500"
+            >
+              <option value="">Default Natural Assistant Voice (Google/Apple)</option>
+              {availableVoices.map((v, i) => (
+                <option key={i} value={v.name}>
+                  {v.name} ({v.lang})
+                </option>
+              ))}
+            </select>
+
+            <div className="grid grid-cols-2 gap-4 pt-1">
+              <div>
+                <div className="flex justify-between text-[11px] text-zinc-400 mb-1">
+                  <span>Speaking Speed</span>
+                  <span className="font-mono">{localSettings.rate.toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.75"
+                  max="1.5"
+                  step="0.05"
+                  value={localSettings.rate}
+                  onChange={(e) => setLocalSettings({ ...localSettings, rate: parseFloat(e.target.value) })}
+                  className="w-full accent-sky-500"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between text-[11px] text-zinc-400 mb-1">
+                  <span>Pitch Modulation</span>
+                  <span className="font-mono">{localSettings.pitch.toFixed(2)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.8"
+                  max="1.3"
+                  step="0.05"
+                  value={localSettings.pitch}
+                  onChange={(e) => setLocalSettings({ ...localSettings, pitch: parseFloat(e.target.value) })}
+                  className="w-full accent-sky-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Primary Language */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-mono text-zinc-300 uppercase tracking-wider flex items-center">
+              <Globe className="w-3.5 h-3.5 text-emerald-400 mr-1.5" />
+              Primary Recognition Language
+            </label>
+            <select
+              value={localSettings.language}
+              onChange={(e) => setLocalSettings({ ...localSettings, language: e.target.value })}
+              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-200 focus:outline-none focus:border-sky-500"
+            >
+              <option value="en-US">English (United States)</option>
+              <option value="en-GB">English (United Kingdom)</option>
+              <option value="es-ES">Spanish (Español)</option>
+              <option value="fr-FR">French (Français)</option>
+              <option value="de-DE">German (Deutsch)</option>
+              <option value="ja-JP">Japanese (日本語)</option>
+              <option value="zh-CN">Mandarin Chinese (中文)</option>
+            </select>
+          </div>
+
+          {/* Advanced Toggles: Barge-in & Sound Effects */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+            <div className="p-3 rounded-xl bg-zinc-900/50 border border-zinc-800 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-zinc-200">Barge-in Interruption</p>
+                <p className="text-[10px] text-zinc-500">Say "Stop" or speak to cut off speech</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLocalSettings({ ...localSettings, bargeInEnabled: !localSettings.bargeInEnabled })}
+                className={`w-8 h-4 rounded-full transition-colors relative p-0.5 ${
+                  localSettings.bargeInEnabled ? 'bg-sky-600' : 'bg-zinc-800'
+                }`}
+              >
+                <div className={`w-3 h-3 rounded-full bg-white transition-transform ${localSettings.bargeInEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-zinc-900/50 border border-zinc-800 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-zinc-200">HUD Sound Effects</p>
+                <p className="text-[10px] text-zinc-500">Futuristic chimes & telemetry pings</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLocalSettings({ ...localSettings, soundEffects: !localSettings.soundEffects })}
+                className={`w-8 h-4 rounded-full transition-colors relative p-0.5 ${
+                  localSettings.soundEffects ? 'bg-sky-600' : 'bg-zinc-800'
+                }`}
+              >
+                <div className={`w-3 h-3 rounded-full bg-white transition-transform ${localSettings.soundEffects ? 'translate-x-4' : 'translate-x-0'}`} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Modal Footer */}
+        <div className="flex items-center justify-between px-6 py-3 border-t border-zinc-800 bg-zinc-900/40">
+          <div className="flex items-center space-x-1 text-[11px] text-zinc-500 font-mono">
+            <Keyboard className="w-3.5 h-3.5" />
+            <span>Shortcut: ⌘/Ctrl+Shift+Space</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs rounded-lg font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-lg flex items-center space-x-1.5 shadow-[0_0_15px_rgba(14,165,233,0.3)] transition-colors"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Apply Configuration</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};

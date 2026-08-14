@@ -1,0 +1,12 @@
+{
+  "name": "FRIDAY Assistant",
+  "description": "Autonomous voice executive secretary with proactive habit learning, Morning Briefing 2.0, predictive meeting prep, E2EE cross-device sync mesh, telephony call screener, and multi-platform distribution.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
