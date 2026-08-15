@@ -63,6 +63,9 @@ export class AhriMobileClient {
   private listeners: ((event: AhriLiveEvent) => void)[] = [];
   private authToken: string | null = null;
   private isConnected = false;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 10;
+  private reconnectDelay = 1000;
 
   constructor(customBaseUrl?: string) {
     const isBrowser = typeof window !== 'undefined';
@@ -74,6 +77,7 @@ export class AhriMobileClient {
     const hostPart = this.baseUrl.replace(/^https?:\/\//, '');
     this.wsUrl = `${wsProto}://${hostPart}/live`;
   }
+
 
   /**
    * Set or update the Firebase Auth ID token
@@ -165,6 +169,7 @@ export class AhriMobileClient {
 
       this.ws.onopen = () => {
         this.isConnected = true;
+        this.reconnectAttempts = 0; // Reset on successful connection
         this.startHeartbeat();
       };
 
@@ -184,19 +189,29 @@ export class AhriMobileClient {
       this.ws.onclose = () => {
         this.isConnected = false;
         this.stopHeartbeat();
-        // Auto-reconnect after 3 seconds
-        setTimeout(() => {
-          if (this.listeners.length > 0) {
-            this.connectLiveStream();
-          }
-        }, 3000);
+        this.handleReconnect();
       };
     } catch (err) {
       console.warn('[Ahri WS] Connection exception:', err);
+      this.handleReconnect();
     }
 
     return () => this.removeListener(onEvent);
   }
+
+  private handleReconnect() {
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      this.reconnectAttempts++;
+      const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts), 30000);
+      console.log(`[Ahri WS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+      setTimeout(() => {
+        if (this.listeners.length > 0) {
+          this.connectLiveStream();
+        }
+      }, delay);
+    }
+  }
+
 
   private startHeartbeat() {
     this.stopHeartbeat();

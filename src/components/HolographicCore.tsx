@@ -1,9 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, memo } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { VoiceState } from '../types/friday';
 
-interface HolographicCoreProps {
+export interface HolographicCoreProps {
   state: VoiceState;
   frequencies: number[];
   audioLevel: number;
@@ -13,7 +13,7 @@ interface HolographicCoreProps {
   onInterrupt: () => void;
 }
 
-export const HolographicCore: React.FC<HolographicCoreProps> = ({
+export const HolographicCore: React.FC<HolographicCoreProps> = memo(({
   state,
   frequencies,
   audioLevel,
@@ -21,6 +21,7 @@ export const HolographicCore: React.FC<HolographicCoreProps> = ({
   onCoreClick,
   onInterrupt
 }) => {
+
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -356,4 +357,5 @@ export const HolographicCore: React.FC<HolographicCoreProps> = ({
       </div>
     </div>
   );
-};
+});
+

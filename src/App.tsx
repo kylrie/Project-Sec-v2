@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 
 import { 
@@ -13,37 +13,34 @@ import {
   Volume2, 
   Mic, 
   Terminal, 
-  X,
-  ChevronUp,
-  Brain,
-  Activity,
-  PhoneCall,
-  CheckCircle2,
-  Sliders
+  X, 
+  ChevronUp, 
+  Brain, 
+  Activity, 
+  PhoneCall, 
+  CheckCircle2, 
+  Sliders 
 } from 'lucide-react';
 
-import { HolographicCore } from './components/HolographicCore';
 import { SyncStatus } from './client/components/SyncStatus';
-import { pushNotificationService } from './client/services/pushNotification';
 import { CommandOverlay } from './components/CommandOverlay';
 import { TimersAndTasks } from './components/TimersAndTasks';
 import { ExecutiveSchedule } from './components/ExecutiveSchedule';
-import { CommunicationsTriage } from './components/CommunicationsTriage';
-import { UnifiedCommunicationsHub } from './components/UnifiedCommunicationsHub';
-import { LiveMeetingRecorder } from './components/LiveMeetingRecorder';
-import { PrivacyVault } from './components/PrivacyVault';
-import { CrossPlatformDeliverables } from './components/CrossPlatformDeliverables';
-import { GoogleWorkspaceHub } from './components/GoogleWorkspaceHub';
 import { SettingsModal } from './components/SettingsModal';
-import { SecretaryBrainHub } from './components/SecretaryBrainHub';
-import { CrossDeviceSyncCenter } from './components/CrossDeviceSyncCenter';
-import { AppStoreAndDistributionPortal } from './components/AppStoreAndDistributionPortal';
-import { VoiceOnboardingWizard } from './components/VoiceOnboardingWizard';
+
+// Heavy 3D Visualizer & Executive Sub-Hubs (Lazy loaded for instant initial render)
+const AhriVisualizer = lazy(() => import('./components/AhriVisualizer'));
+const UnifiedCommunicationsHub = lazy(() => import('./components/UnifiedCommunicationsHub').then(m => ({ default: m.UnifiedCommunicationsHub })));
+const LiveMeetingRecorder = lazy(() => import('./components/LiveMeetingRecorder').then(m => ({ default: m.LiveMeetingRecorder })));
+const PrivacyVault = lazy(() => import('./components/PrivacyVault').then(m => ({ default: m.PrivacyVault })));
+const SecretaryBrainHub = lazy(() => import('./components/SecretaryBrainHub').then(m => ({ default: m.SecretaryBrainHub })));
+const VoiceOnboardingWizard = lazy(() => import('./components/VoiceOnboardingWizard').then(m => ({ default: m.VoiceOnboardingWizard })));
 
 import { useVoiceEngine } from './hooks/useVoiceEngine';
 import { storageService } from './services/storage';
 import { soundSynth } from './services/audioEffects';
 import { ConversationTurn, VoiceSettings, ActiveTimer, ReminderItem, CalendarEvent, MessageItem } from './types/friday';
+
 
 export default function App() {
   const [settings, setSettings] = useState<VoiceSettings>(storageService.getSettings());
@@ -238,16 +235,24 @@ export default function App() {
       <main className="flex-1 w-full max-w-4xl mx-auto px-4 flex flex-col items-center justify-center z-10 my-auto">
         {/* 3D Quantum Orb Component */}
         <div className="w-full flex justify-center items-center">
-          <HolographicCore
-            state={state}
-            frequencies={frequencies}
-            audioLevel={audioLevel}
-            wakeWord={settings.wakeWord || 'Hey Ahri'}
-            latencyMs={lastLatencyMs}
-            onCoreClick={handleCoreClick}
-            onInterrupt={interrupt}
-          />
+          <Suspense fallback={
+            <div className="w-full max-w-[560px] h-[360px] sm:h-[440px] flex flex-col items-center justify-center space-y-3">
+              <div className="w-12 h-12 rounded-full border-2 border-sky-400/30 border-t-sky-400 animate-spin" />
+              <span className="font-mono text-xs text-sky-300/70 tracking-widest uppercase">Initializing Neural Core...</span>
+            </div>
+          }>
+            <AhriVisualizer
+              state={state}
+              frequencies={frequencies}
+              audioLevel={audioLevel}
+              wakeWord={settings.wakeWord || 'Hey Ahri'}
+              latencyMs={lastLatencyMs}
+              onCoreClick={handleCoreClick}
+              onInterrupt={interrupt}
+            />
+          </Suspense>
         </div>
+
 
         {/* Dynamic Live Speech Captions */}
         <div className="min-h-[56px] w-full max-w-xl mx-auto flex flex-col items-center justify-center px-4 text-center my-3">
@@ -389,49 +394,56 @@ export default function App() {
 
               {/* Drawer Scrollable Content */}
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {activeDrawerTab === 'briefing' && (
-                  <SecretaryBrainHub
-                    onSpeak={speak}
-                    onBlockCalendar={handleBlockCalendar}
-                    onOpenMessageThread={() => setActiveDrawerTab('comms')}
-                    soundSynth={soundSynth}
-                  />
-                )}
-
-                {activeDrawerTab === 'schedule' && (
-                  <div className="space-y-6">
-                    <TimersAndTasks
-                      timers={timers}
-                      reminders={reminders}
-                      onUpdateTimers={handleUpdateTimers}
-                      onUpdateReminders={handleUpdateReminders}
-                    />
-                    <ExecutiveSchedule
-                      events={calendarEvents}
-                      onAddEvent={handleAddCalendarEvent}
-                      onDeleteEvent={handleDeleteCalendarEvent}
-                    />
+                <Suspense fallback={
+                  <div className="flex items-center justify-center p-12 space-x-2 text-zinc-500 font-mono text-xs">
+                    <div className="w-4 h-4 rounded-full border-2 border-sky-500 border-t-transparent animate-spin" />
+                    <span>Loading Module...</span>
                   </div>
-                )}
+                }>
+                  {activeDrawerTab === 'briefing' && (
+                    <SecretaryBrainHub
+                      onSpeak={speak}
+                      onBlockCalendar={handleBlockCalendar}
+                      onOpenMessageThread={() => setActiveDrawerTab('comms')}
+                      soundSynth={soundSynth}
+                    />
+                  )}
 
-                {activeDrawerTab === 'comms' && (
-                  <UnifiedCommunicationsHub
-                    messages={messages}
-                    onUpdateMessages={handleUpdateMessages}
-                    onSpeak={speak}
-                  />
-                )}
+                  {activeDrawerTab === 'schedule' && (
+                    <div className="space-y-6">
+                      <TimersAndTasks
+                        timers={timers}
+                        reminders={reminders}
+                        onUpdateTimers={handleUpdateTimers}
+                        onUpdateReminders={handleUpdateReminders}
+                      />
+                      <ExecutiveSchedule
+                        events={calendarEvents}
+                        onAddEvent={handleAddCalendarEvent}
+                        onDeleteEvent={handleDeleteCalendarEvent}
+                      />
+                    </div>
+                  )}
 
-                {activeDrawerTab === 'meetings' && (
-                  <LiveMeetingRecorder onSpeakSummary={speak} />
-                )}
+                  {activeDrawerTab === 'comms' && (
+                    <UnifiedCommunicationsHub
+                      messages={messages}
+                      onUpdateMessages={handleUpdateMessages}
+                      onSpeak={speak}
+                    />
+                  )}
 
-                {activeDrawerTab === 'vault' && (
-                  <PrivacyVault
-                    conversations={conversations}
-                    onDataPurged={handleDataPurged}
-                  />
-                )}
+                  {activeDrawerTab === 'meetings' && (
+                    <LiveMeetingRecorder onSpeakSummary={speak} />
+                  )}
+
+                  {activeDrawerTab === 'vault' && (
+                    <PrivacyVault
+                      conversations={conversations}
+                      onDataPurged={handleDataPurged}
+                    />
+                  )}
+                </Suspense>
               </div>
             </motion.div>
           </div>
@@ -471,15 +483,22 @@ export default function App() {
             >
               <X className="w-4 h-4" />
             </button>
-            <VoiceOnboardingWizard
-              onComplete={() => setIsOnboardingOpen(false)}
-              onSpeak={speak}
-              onSelectPersonality={(p) => handleSaveSettings({ ...settings, personality: p })}
-              soundSynth={soundSynth}
-            />
+            <Suspense fallback={
+              <div className="p-8 text-center text-zinc-400 font-mono text-xs">
+                Loading Setup Wizard...
+              </div>
+            }>
+              <VoiceOnboardingWizard
+                onComplete={() => setIsOnboardingOpen(false)}
+                onSpeak={speak}
+                onSelectPersonality={(p) => handleSaveSettings({ ...settings, personality: p })}
+                soundSynth={soundSynth}
+              />
+            </Suspense>
           </div>
         </div>
       )}
+
     </div>
   );
 }

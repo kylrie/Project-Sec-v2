@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mic, CornerDownLeft, Sparkles, X, Clock, Calendar, ShieldCheck, FileText } from 'lucide-react';
 import { VoiceState } from '../types/friday';
@@ -20,7 +20,7 @@ const QUICK_COMMANDS = [
   { icon: FileText, label: "Remind me to call Mom at 5 PM", query: "Remind me to call Mom at 5 PM" },
 ];
 
-export const CommandOverlay: React.FC<CommandOverlayProps> = ({
+export const CommandOverlay: React.FC<CommandOverlayProps> = memo(({
   isOpen,
   onClose,
   onSubmitCommand,
@@ -28,6 +28,7 @@ export const CommandOverlay: React.FC<CommandOverlayProps> = ({
   voiceState,
   wakeWord
 }) => {
+
   const [inputVal, setInputVal] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -132,4 +133,5 @@ export const CommandOverlay: React.FC<CommandOverlayProps> = ({
       </div>
     </AnimatePresence>
   );
-};
+});
+

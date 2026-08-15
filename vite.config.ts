@@ -22,14 +22,15 @@ export default defineConfig(() => {
       rollupOptions: {
         output: {
           manualChunks: {
-            'vendor-react': ['react', 'react-dom'],
-            'vendor-three': ['three'],
-            'vendor-ui': ['lucide-react', 'motion/react'],
+            'three-vendor': ['three'],
+            'firebase-vendor': ['firebase/app', 'firebase/auth'],
+            'ui-vendor': ['react', 'react-dom', 'lucide-react', 'motion/react'],
           }
         }
       },
-      chunkSizeWarningLimit: 1000
+      chunkSizeWarningLimit: 500
     }
   };
 });
+
 

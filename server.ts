@@ -1,7 +1,9 @@
 import "dotenv/config";
 import cors from "cors";
+import compression from "compression";
 import express from "express";
 import path from "path";
+
 import { createServer as createViteServer } from "vite";
 import { WebSocketServer, WebSocket } from "ws";
 import http from "http";
@@ -55,7 +57,9 @@ async function startServer() {
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: "/live" });
 
+  app.use(compression());
   app.use(express.json());
+
 
   // Authenticated WebSocket clients
   const clients = new Map<WebSocket, { userId?: string }>();
