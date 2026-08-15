@@ -14,5 +14,8 @@ coverage/
 *.db-shm
 data/
 firebase-applet-config.json
+*firebase*config*.json
+*firebase*.json
+!firebase.json
 serviceAccountKey*.json
 *.pem
