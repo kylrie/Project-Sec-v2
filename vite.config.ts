@@ -25,10 +25,12 @@ export default defineConfig(() => {
             'three-vendor': ['three'],
             'firebase-vendor': ['firebase/app', 'firebase/auth'],
             'ui-vendor': ['react', 'react-dom', 'lucide-react', 'motion/react'],
+            'porcupine-vendor': ['@picovoice/porcupine-web', '@picovoice/web-voice-processor'],
           }
         }
       },
-      chunkSizeWarningLimit: 500
+      chunkSizeWarningLimit: 1000
+
     }
   };
 });

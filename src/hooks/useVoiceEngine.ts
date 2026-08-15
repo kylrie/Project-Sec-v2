@@ -3,6 +3,8 @@ import { VoiceState, VoiceSettings, ConversationTurn } from '../types/friday';
 import { soundEffects } from '../services/audioEffects';
 import { storageService } from '../services/storage';
 import { tryParseLocalIntent } from '../services/localIntentParser';
+import { VADService } from '../services/vadService';
+import { PorcupineService } from '../services/porcupineService';
 
 declare global {
   interface Window {
@@ -39,6 +41,12 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
   const isSettingUpMicRef = useRef<boolean>(false);
   const lastStateUpdateTimeRef = useRef<number>(0);
 
+  const vadServiceRef = useRef<VADService | null>(null);
+  const porcupineServiceRef = useRef<PorcupineService | null>(null);
+  const transcriptRef = useRef<string>('');
+  const interimTranscriptRef = useRef<string>('');
+
+
   // Initialize SpeechSynthesis and unlock on user interaction
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -53,7 +61,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     }
   }, []);
 
-  // Setup Web Audio Analyser (Non-blocking with throttled React updates)
+  // Setup Web Audio Analyser & VAD (Non-blocking with throttled React updates)
   const setupAudioAnalyser = useCallback(async () => {
     if (isSettingUpMicRef.current) return;
     if (audioContextRef.current && audioContextRef.current.state === 'running') {
@@ -75,7 +83,6 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       }
 
       if (!micStreamRef.current) {
-        // Quick permission check with 2.5s safety timeout
         const streamPromise = navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         const timeoutPromise = new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Mic timeout')), 2500));
         const stream = await Promise.race([streamPromise, timeoutPromise]) as MediaStream;
@@ -98,6 +105,26 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       analyser.smoothingTimeConstant = 0.8;
       source.connect(analyser);
       analyserRef.current = analyser;
+
+      // Initialize Voice Activity Detection (VAD) with 1.5s automatic silence cut-off
+      if (!vadServiceRef.current) {
+        vadServiceRef.current = new VADService({
+          silenceTimeoutMs: 1500,
+          energyThreshold: 0.022,
+          onSpeechEnd: () => {
+            if (isListeningIntentRef.current) {
+              const pendingText = (transcriptRef.current || interimTranscriptRef.current).trim();
+              if (pendingText) {
+                console.log('[VAD] 1.5s Silence detected. Auto-submitting spoken command:', pendingText);
+                isListeningIntentRef.current = false;
+                processCommand(pendingText);
+              }
+            }
+          }
+        });
+      }
+      vadServiceRef.current.start(micStreamRef.current, ctx);
+
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
@@ -384,6 +411,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       }
 
       setInterimTranscript(interimStr);
+      interimTranscriptRef.current = interimStr;
 
       const incoming = (finalStr || interimStr).trim();
       const lower = incoming.toLowerCase();
@@ -393,12 +421,14 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       if (!isListeningIntentRef.current && (lower.includes(wakeTarget) || lower.includes('ahri') || lower.includes('friday') || lower.includes('jarvis'))) {
         isListeningIntentRef.current = true;
         setState('listening');
+        setupAudioAnalyser();
         if (settings.soundEffects) soundEffects.playWakeChime();
 
         const match = incoming.match(new RegExp(`(?:hey\\s+)?(?:ahri|friday|jarvis)[,\\s]*(.*)`, 'i'));
         const remainder = match && match[1] ? match[1].trim() : '';
         if (remainder && finalStr) {
           setTranscript(remainder);
+          transcriptRef.current = remainder;
           isListeningIntentRef.current = false;
           processCommand(remainder);
         }
@@ -408,7 +438,9 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       // If active listening mode and final text received
       if (finalStr && isListeningIntentRef.current) {
         setTranscript(finalStr);
+        transcriptRef.current = finalStr;
         setInterimTranscript('');
+        interimTranscriptRef.current = '';
         isListeningIntentRef.current = false;
         processCommand(finalStr);
       }
@@ -419,7 +451,6 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     };
 
     recognition.onerror = (event: any) => {
-      // 'no-speech' and 'aborted' are standard browser stream events, not application errors
       if (event.error !== 'no-speech' && event.error !== 'aborted') {
         console.warn('Speech recognition status:', event.error);
       }
@@ -445,11 +476,28 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       }
     }
 
+    // Initialize Porcupine local wake word service if access key is present
+    if (!porcupineServiceRef.current) {
+      porcupineServiceRef.current = new PorcupineService({
+        onWakeWordDetected: () => {
+          console.log('[VoiceEngine] Porcupine triggered wake chime & listening mode');
+          startManualListening();
+        }
+      });
+      porcupineServiceRef.current.start().catch(() => {});
+    }
+
     return () => {
       try {
         recognition.stop();
       } catch {
         // ignore
+      }
+      if (porcupineServiceRef.current) {
+        porcupineServiceRef.current.stop().catch(() => {});
+      }
+      if (vadServiceRef.current) {
+        vadServiceRef.current.stop();
       }
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
@@ -458,7 +506,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
         micStreamRef.current.getTracks().forEach(t => t.stop());
       }
     };
-  }, [settings.continuousListening, settings.language, settings.wakeWord, settings.soundEffects, processCommand]);
+  }, [settings.continuousListening, settings.language, settings.wakeWord, settings.soundEffects, processCommand, setupAudioAnalyser]);
 
   // Start Manual Listening (Non-blocking, instant response)
   const startManualListening = useCallback(() => {
@@ -467,7 +515,9 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     isListeningIntentRef.current = true;
     setState('listening');
     setTranscript('');
+    transcriptRef.current = '';
     setInterimTranscript('');
+    interimTranscriptRef.current = '';
     if (settings.soundEffects) soundEffects.playWakeChime();
 
     if (recognitionRef.current) {
@@ -481,8 +531,8 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
 
   // Stop Manual Listening and Send
   const stopManualListening = useCallback(() => {
-    if (interimTranscript || transcript) {
-      const textToProcess = transcript || interimTranscript;
+    const textToProcess = (transcriptRef.current || interimTranscriptRef.current || transcript || interimTranscript).trim();
+    if (textToProcess) {
       isListeningIntentRef.current = false;
       processCommand(textToProcess);
     } else {
@@ -490,6 +540,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       isListeningIntentRef.current = false;
     }
   }, [interimTranscript, transcript, processCommand]);
+
 
   return {
     state,
