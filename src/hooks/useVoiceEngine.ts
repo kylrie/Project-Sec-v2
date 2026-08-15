@@ -419,7 +419,8 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     };
 
     recognition.onerror = (event: any) => {
-      if (event.error !== 'no-speech') {
+      // 'no-speech' and 'aborted' are standard browser stream events, not application errors
+      if (event.error !== 'no-speech' && event.error !== 'aborted') {
         console.warn('Speech recognition status:', event.error);
       }
     };

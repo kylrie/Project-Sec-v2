@@ -261,15 +261,18 @@ export const HolographicCore: React.FC<HolographicCoreProps> = ({
     // 4. 60FPS 3D RENDER LOOP WITH SMOOTH GREEN PULSATING TRANSITION
     // =========================================================================
     let animId: number;
-    const clock = new THREE.Clock();
+    let lastTime = performance.now();
+    const startTime = performance.now();
     let currentSpeakingLerp = 0.0;
     let currentListeningLerp = 0.0;
 
     const animate = () => {
       animId = requestAnimationFrame(animate);
 
-      const delta = clock.getDelta();
-      const elapsed = clock.getElapsedTime();
+      const now = performance.now();
+      const delta = Math.min(0.1, (now - lastTime) * 0.001);
+      lastTime = now;
+      const elapsed = (now - startTime) * 0.001;
       const { isSpeaking: curSpeaking, isListening: curListening, isProcessing: curProcessing, activeLevel: curAudioLevel } = stateRef.current;
 
       // Update 360° OrbitControls

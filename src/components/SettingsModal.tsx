@@ -8,7 +8,8 @@ interface SettingsModalProps {
   onClose: () => void;
   settings: VoiceSettings;
   onSaveSettings: (settings: VoiceSettings) => void;
-  onTestVoice: (text: string) => void;
+  onTestVoice?: (text: string) => void;
+  onLaunchWizard?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -16,7 +17,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   settings,
   onSaveSettings,
-  onTestVoice
+  onTestVoice,
+  onLaunchWizard
 }) => {
   const [localSettings, setLocalSettings] = useState<VoiceSettings>(settings);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -45,7 +47,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleTestTTS = () => {
-    onTestVoice(`Voice calibration confirmed. I am operating with ${localSettings.personality} executive protocols, speaking at rate ${localSettings.rate.toFixed(2)}.`);
+    const testPhrase = `Voice calibration confirmed. I am operating with ${localSettings.personality} executive protocols, speaking at rate ${localSettings.rate.toFixed(2)}.`;
+    if (typeof onTestVoice === 'function') {
+      onTestVoice(testPhrase);
+    } else if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(testPhrase);
+      utterance.rate = localSettings.rate;
+      utterance.pitch = localSettings.pitch;
+      window.speechSynthesis.speak(utterance);
+    }
   };
 
   return (
@@ -59,7 +70,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-semibold text-zinc-100 uppercase tracking-wider font-mono">
-                FRIDAY Neural Voice & System Configuration
+                Project Ahri Neural Voice & System Configuration
               </h3>
               <p className="text-[11px] text-zinc-400">Wake word, acoustic tuning, and executive personality</p>
             </div>
@@ -84,7 +95,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span className="text-[10px] text-zinc-500 font-normal">Continuous background listening</span>
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {['Hey Friday', 'FRIDAY', 'Jarvis'].map((preset) => (
+              {['Hey Ahri', 'AHRI', 'Hey Friday'].map((preset) => (
                 <button
                   key={preset}
                   type="button"

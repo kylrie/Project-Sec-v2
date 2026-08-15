@@ -439,6 +439,7 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         onSaveSettings={handleSaveSettings}
+        onTestVoice={speak}
         onLaunchWizard={() => {
           setIsSettingsOpen(false);
           setIsOnboardingOpen(true);
