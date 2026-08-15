@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 
 import { HolographicCore } from './components/HolographicCore';
+import { SyncStatus } from './client/components/SyncStatus';
+import { pushNotificationService } from './client/services/pushNotification';
 import { CommandOverlay } from './components/CommandOverlay';
 import { TimersAndTasks } from './components/TimersAndTasks';
 import { ExecutiveSchedule } from './components/ExecutiveSchedule';
@@ -178,6 +180,9 @@ export default function App() {
       <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
         <div className="absolute top-[20%] left-[50%] translate-x-[-50%] translate-y-[-50%] w-[800px] h-[800px] bg-sky-950/20 blur-[160px] rounded-full pointer-events-none" />
       </div>
+
+      {/* Cloud Realtime Sync Status Indicator */}
+      <SyncStatus />
 
       {/* 1. ULTRA-MINIMAL TOP BAR */}
       <header className="w-full max-w-5xl mx-auto px-6 py-6 flex items-center justify-between z-20">

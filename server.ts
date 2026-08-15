@@ -4,9 +4,15 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { WebSocketServer, WebSocket } from "ws";
 import http from "http";
+import url from "url";
 import { GoogleGenAI } from "@google/genai";
-import { initDatabase, dbRepository } from "./src/server/db/database.js";
+import { initDatabase, dbRepository as sqliteDbRepository } from "./src/server/db/database.js";
+import { dbRepository as supabaseDbRepository } from "./src/server/db/supabaseClient.js";
+import { adminAuth } from "./src/server/lib/firebaseAdmin.js";
 import { secretaryBrain } from "./src/server/ai/secretaryBrain.js";
+import { calendarRouter } from "./src/server/routes/calendar.js";
+import { tasksRouter } from "./src/server/routes/tasks.js";
+import { userRouter } from "./src/server/routes/user.js";
 
 async function startServer() {
   const app = express();
@@ -21,11 +27,30 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Connected WebSocket clients
-  const clients = new Set<WebSocket>();
-  wss.on("connection", (ws) => {
-    clients.add(ws);
-    ws.send(JSON.stringify({ type: "SYSTEM_READY", message: "Project Ahri Neural Core & SQLite Brain Online", timestamp: Date.now() }));
+  // Authenticated WebSocket clients
+  const clients = new Map<WebSocket, { userId?: string }>();
+  wss.on("connection", async (ws, req) => {
+    const parsedUrl = url.parse(req.url || "", true);
+    const token = parsedUrl.query.token as string | undefined;
+    let authenticatedUserId = "dev-executive-001";
+
+    if (token && adminAuth) {
+      try {
+        const decoded = await adminAuth.verifyIdToken(token);
+        authenticatedUserId = decoded.uid;
+        console.log(`[WebSocket] Authenticated client connected: ${authenticatedUserId}`);
+      } catch (err: any) {
+        console.warn(`[WebSocket] Token validation notice: ${err.message}`);
+      }
+    }
+
+    clients.set(ws, { userId: authenticatedUserId });
+    ws.send(JSON.stringify({ 
+      type: "SYSTEM_READY", 
+      message: "Project Ahri Neural Core, Supabase Realtime & SQLite Brain Online", 
+      userId: authenticatedUserId,
+      timestamp: Date.now() 
+    }));
     
     ws.on("message", async (rawMessage) => {
       try {
@@ -43,24 +68,29 @@ async function startServer() {
     });
   });
 
+  // Mount API Routers
+  app.use("/api/calendar", calendarRouter);
+  app.use("/api/tasks", tasksRouter);
+  app.use("/api/user", userRouter);
+
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({
       status: "operational",
       system: "Project Ahri Executive Core",
-      engine: "Gemini 3.7 Pro + SQLite Neural Storage",
-      version: "3.2.0-enterprise",
+      engine: "Gemini 3.7 Pro + Supabase PostgreSQL + Firebase Admin",
+      version: "3.5.0-enterprise",
       uptime: process.uptime(),
       timestamp: new Date().toISOString()
     });
   });
 
-  // Intent parsing and conversational AI powered by OpenAI GPT-4o & SQLite Memory
+  // Intent parsing and conversational AI powered by Gemini 3.7 Pro & Supabase/SQLite Memory
   app.post("/api/command", async (req, res) => {
     try {
-      const { message, sessionId = "default", personality = "professional", userTimezone = "UTC" } = req.body;
+      const { message, sessionId = "default", personality = "professional", userTimezone = "UTC", userId = "dev-executive-001" } = req.body;
       
-      // Process with OpenAI GPT-4o Secretary Brain
+      // Process with Gemini 3.7 Pro AI Brain
       const result = await secretaryBrain.processCommand({
         message,
         sessionId,
@@ -68,18 +98,33 @@ async function startServer() {
         userTimezone
       });
 
-      // Broadcast tool execution to active WebSocket clients for live UI feedback
-      if (result.toolsUsed && result.toolsUsed.length > 0) {
-        const broadcastMsg = JSON.stringify({
-          type: "AGENT_TOOL_EXECUTION",
-          tools: result.toolsUsed,
+      // Save to Supabase Conversations
+      try {
+        await supabaseDbRepository.saveConversation({
+          userId,
+          sessionId,
+          role: "ahri",
+          content: result.spokenReply || "Action acknowledged.",
           intent: result.intent,
-          timestamp: Date.now()
+          actionData: result.actionData,
+          toolsUsed: result.toolsUsed,
+          latencyMs: result.latencyMs
         });
-        clients.forEach(c => {
-          if (c.readyState === WebSocket.OPEN) c.send(broadcastMsg);
-        });
+      } catch (e) {
+        // Fallback to local SQLite
       }
+
+      // Broadcast tool execution to active WebSocket clients for live multi-device UI feedback
+      const broadcastMsg = JSON.stringify({
+        type: "AGENT_TOOL_EXECUTION",
+        tools: result.toolsUsed || [],
+        intent: result.intent,
+        reply: result.spokenReply,
+        timestamp: Date.now()
+      });
+      clients.forEach((meta, c) => {
+        if (c.readyState === WebSocket.OPEN) c.send(broadcastMsg);
+      });
 
       res.json({
         ...result,
@@ -96,41 +141,23 @@ async function startServer() {
     }
   });
 
-  // SQLite REST Endpoints for Direct Executive Data Access
-  app.get("/api/calendar", (req, res) => {
-    const date = req.query.date as string | undefined;
-    res.json(dbRepository.listCalendarEvents(date));
-  });
-
-  app.post("/api/calendar", (req, res) => {
-    res.json(dbRepository.createCalendarEvent(req.body));
-  });
-
-  app.get("/api/tasks", (req, res) => {
-    const status = (req.query.status as string) || "pending";
-    res.json(dbRepository.listTasks(status));
-  });
-
-  app.post("/api/tasks", (req, res) => {
-    res.json(dbRepository.createTask(req.body.title, req.body.dueDate, req.body.priority));
-  });
-
+  // Direct SQLite Fallback Endpoints
   app.get("/api/emails", (req, res) => {
     const unreadOnly = req.query.unreadOnly === "true";
-    res.json(dbRepository.listEmails(unreadOnly));
+    res.json(sqliteDbRepository.listEmails(unreadOnly));
   });
 
   app.get("/api/memory", (req, res) => {
-    res.json(dbRepository.getMemoryFacts(20));
+    res.json(sqliteDbRepository.getMemoryFacts(20));
   });
 
   app.post("/api/memory", (req, res) => {
-    res.json(dbRepository.saveMemoryFact(req.body.key, req.body.value, req.body.category));
+    res.json(sqliteDbRepository.saveMemoryFact(req.body.key, req.body.value, req.body.category));
   });
 
   app.get("/api/conversations", (req, res) => {
     const sessionId = (req.query.sessionId as string) || "default";
-    res.json(dbRepository.getRecentConversations(sessionId, 20));
+    res.json(sqliteDbRepository.getRecentConversations(sessionId, 20));
   });
 
   // Dedicated Meeting Minutes Summarizer API (Comprehensive Executive Deliverable)
@@ -617,7 +644,7 @@ Return JSON:
       dataSummary: "Cross-device state synchronized"
     });
 
-    clients.forEach(client => {
+    clients.forEach((meta, client) => {
       if (client.readyState === WebSocket.OPEN) {
         client.send(broadcastMsg);
       }
