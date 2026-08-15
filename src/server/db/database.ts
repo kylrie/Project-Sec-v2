@@ -151,8 +151,8 @@ export function initDatabase() {
     );
   `);
 
-  // Gate seed data behind an explicit development flag
-  if (process.env.NODE_ENV !== 'production' && process.env.SEED_DEMO_DATA === 'true') {
+  // Run seed data in dev by default; opt-out with SEED_DEMO_DATA=false
+  if (process.env.NODE_ENV !== 'production' && process.env.SEED_DEMO_DATA !== 'false') {
     seedInitialData();
   }
 }
@@ -420,7 +420,7 @@ export const dbRepository = {
     const date = event.date || 'Today';
     const endTime = event.endTime || 'Next hour';
     const attendeesJson = event.attendees ? JSON.stringify(event.attendees) : JSON.stringify([]);
-    stmt.run(id, event.title, event.startTime, endTime, date, event.location || 'Executive HQ / Remote', attendeesJson, Date.now());
+    stmt.run(id, event.title, event.startTime, endTime, date, event.location || 'Executive HQ / Virtual', attendeesJson, Date.now());
     return { id, ...event, date, endTime };
   },
 

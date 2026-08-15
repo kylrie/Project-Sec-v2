@@ -1,23 +1,34 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+// Lazy singleton — not initialized at module load time so missing env vars
+// don't crash the server when running in local dev with SQLite fallback.
+let _supabaseAdmin: SupabaseClient | null = null;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('FATAL: SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in environment');
+export function getSupabaseAdmin(): SupabaseClient {
+  if (_supabaseAdmin) return _supabaseAdmin;
+
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('FATAL: SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in environment');
+  }
+
+  _supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  });
+
+  return _supabaseAdmin;
 }
 
-export const supabaseAdmin: SupabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
-});
+/** Quick check — lets callers decide whether to use Supabase or SQLite fallback */
+export const isSupabaseConfigured = () =>
+  !!process.env.SUPABASE_URL && !!process.env.SUPABASE_SERVICE_KEY;
 
 export const dbRepository = {
   // 1. Calendar Events
   listCalendarEvents: async (userId: string, dateRange?: { start?: string; end?: string; date?: string }) => {
-    let query = supabaseAdmin
+    let query = getSupabaseAdmin()
       .from('calendar_events')
       .select('*')
       .eq('user_id', userId)
@@ -48,7 +59,7 @@ export const dbRepository = {
     const startDate = eventData.startTime ? new Date(eventData.startTime) : now;
     const endDate = eventData.endTime ? new Date(eventData.endTime) : new Date(startDate.getTime() + 3600000);
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('calendar_events')
       .insert({
         user_id: userId,
@@ -75,7 +86,7 @@ export const dbRepository = {
     location: string;
     status: 'confirmed' | 'tentative' | 'cancelled';
   }>) => {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('calendar_events')
       .update({
         ...(updates.title && { title: updates.title }),
@@ -95,7 +106,7 @@ export const dbRepository = {
   },
 
   deleteCalendarEvent: async (userId: string, eventId: string) => {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('calendar_events')
       .delete()
       .eq('id', eventId)
@@ -108,7 +119,7 @@ export const dbRepository = {
 
   // 2. Tasks
   listTasks: async (userId: string, status: string = 'pending') => {
-    let query = supabaseAdmin
+    let query = getSupabaseAdmin()
       .from('tasks')
       .select('*')
       .eq('user_id', userId);
@@ -131,7 +142,7 @@ export const dbRepository = {
     priority?: 'low' | 'medium' | 'high' | 'critical';
     category?: string;
   }) => {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('tasks')
       .insert({
         user_id: userId,
@@ -154,12 +165,12 @@ export const dbRepository = {
     priority: 'low' | 'medium' | 'high' | 'critical';
     dueDate: string;
   }>) => {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('tasks')
       .update({
         ...(updates.title && { title: updates.title }),
-        ...(updates.status && { 
-          status: updates.status, 
+        ...(updates.status && {
+          status: updates.status,
           ...(updates.status === 'completed' ? { completed_at: new Date().toISOString() } : {})
         }),
         ...(updates.priority && { priority: updates.priority }),
@@ -176,7 +187,7 @@ export const dbRepository = {
   },
 
   deleteTask: async (userId: string, taskId: string) => {
-    const { error } = await supabaseAdmin
+    const { error } = await getSupabaseAdmin()
       .from('tasks')
       .delete()
       .eq('id', taskId)
@@ -197,7 +208,7 @@ export const dbRepository = {
     toolsUsed?: string[];
     latencyMs?: number;
   }) => {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('conversations')
       .insert({
         user_id: params.userId,
@@ -220,7 +231,7 @@ export const dbRepository = {
   },
 
   getRecentConversations: async (userId: string, sessionId: string = 'default', limit: number = 8) => {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('conversations')
       .select('role, content, intent, created_at')
       .eq('user_id', userId)
@@ -242,7 +253,7 @@ export const dbRepository = {
 
   // 4. User Profile & Preferences
   getUserProfile: async (userId: string) => {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('profiles')
       .select('*')
       .eq('id', userId)
@@ -263,7 +274,7 @@ export const dbRepository = {
     executive_title: string;
     preferred_language: string;
   }>) => {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('profiles')
       .update({
         ...updates,
@@ -279,7 +290,7 @@ export const dbRepository = {
 
   // 5. Multi-Device Registration & FCM Tokens
   registerDevice: async (userId: string, deviceName: string, platform: 'android' | 'ios' | 'windows' | 'macos' | 'web', pushToken?: string) => {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('devices')
       .upsert({
         user_id: userId,
@@ -294,7 +305,7 @@ export const dbRepository = {
 
     if (error) {
       // Fallback insert if composite key conflict differs
-      const { data: inserted, error: insertError } = await supabaseAdmin
+      const { data: inserted, error: insertError } = await getSupabaseAdmin()
         .from('devices')
         .insert({
           user_id: userId,
@@ -313,7 +324,7 @@ export const dbRepository = {
   },
 
   getUserDevices: async (userId: string) => {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('devices')
       .select('*')
       .eq('user_id', userId)
@@ -331,7 +342,7 @@ export const dbRepository = {
     data?: any;
     scheduledFor?: string;
   }) => {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('notifications')
       .insert({
         user_id: userId,
