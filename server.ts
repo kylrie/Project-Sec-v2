@@ -48,8 +48,8 @@ async function startServer() {
     res.json({
       status: "operational",
       system: "FRIDAY Executive Assistant Core",
-      engine: "OpenAI GPT-4o + SQLite Neural Storage",
-      version: "3.0.0-enterprise",
+      engine: "Gemini 3.7 Pro + SQLite Neural Storage",
+      version: "3.1.0-enterprise",
       uptime: process.uptime(),
       timestamp: new Date().toISOString()
     });

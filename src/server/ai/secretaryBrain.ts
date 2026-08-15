@@ -1,5 +1,5 @@
-import OpenAI from 'openai';
 import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
 import { dbRepository } from '../db/database.js';
 import { FRIDAY_TOOLS, executeToolCall } from './tools.js';
 
@@ -9,10 +9,18 @@ export interface BrainProcessResult {
   actionData: any;
   toolsUsed: string[];
   latencyMs: number;
-  provider: 'openai-gpt4o' | 'gemini' | 'local-brain';
+  provider: 'gemini-3.7-pro' | 'gemini-flash' | 'openai-gpt4o' | 'local-brain';
 }
 
 export class SecretaryBrain {
+  private getGeminiClient(): GoogleGenAI | null {
+    const key = process.env.GEMINI_API_KEY;
+    if (key && key !== 'MY_GEMINI_API_KEY' && key.trim().length > 5) {
+      return new GoogleGenAI({ apiKey: key });
+    }
+    return null;
+  }
+
   private getOpenAIClient(): OpenAI | null {
     const key = process.env.OPENAI_API_KEY;
     if (key && key !== 'MY_OPENAI_API_KEY' && key.startsWith('sk-')) {
@@ -21,16 +29,8 @@ export class SecretaryBrain {
     return null;
   }
 
-  private getGeminiClient(): GoogleGenAI | null {
-    const key = process.env.GEMINI_API_KEY;
-    if (key && key !== 'MY_GEMINI_API_KEY') {
-      return new GoogleGenAI({ apiKey: key });
-    }
-    return null;
-  }
-
   /**
-   * Main Agentic Processing Loop with Multi-turn Context & Dynamic Tool Calling
+   * Main Agentic Processing Loop with Gemini 3.7 Pro, Multi-turn Context & Tool Calling
    */
   public async processCommand(params: {
     message: string;
@@ -45,7 +45,7 @@ export class SecretaryBrain {
 
     // 1. Fetch recent conversation memory & long-term facts from SQLite
     const recentHistory = dbRepository.getRecentConversations(sessionId, 6);
-    const memoryFacts = dbRepository.getMemoryFacts(10);
+    const memoryFacts = dbRepository.getMemoryFacts(12);
 
     const memoryContext = memoryFacts.length > 0
       ? `\nKNOWN EXECUTIVE FACTS & PREFERENCES:\n${memoryFacts.map(f => `- ${f.fact_key}: ${f.fact_value}`).join('\n')}`
@@ -67,9 +67,137 @@ Guidelines:
 2. You can perform multi-step actions (e.g. check calendar and schedule a meeting).
 3. The spoken response will be fed directly into Text-To-Speech audio. KEEP IT NATURAL, CRISP, AND SPOKEN (No markdown symbols, no bullet asterisks, no hashtag headers, no tables).`;
 
-    const openAiClient = this.getOpenAIClient();
+    // 2. Primary Engine: Gemini 3.7 Pro with Native Function Calling
+    const geminiClient = this.getGeminiClient();
+    if (geminiClient) {
+      try {
+        const geminiTools = [{
+          functionDeclarations: FRIDAY_TOOLS.map(t => ({
+            name: t.function.name,
+            description: t.function.description,
+            parameters: t.function.parameters
+          }))
+        }];
 
-    // 2. Try OpenAI GPT-4o with Tool Calling
+        const contents: any[] = [
+          ...recentHistory.map(h => ({
+            role: h.role === 'user' ? 'user' : 'model',
+            parts: [{ text: h.text }]
+          })),
+          {
+            role: 'user',
+            parts: [{ text: params.message }]
+          }
+        ];
+
+        let finalSpokenReply = '';
+        let primaryIntent = 'general_chat';
+        let mergedActionData: any = {};
+        const toolsUsed: string[] = [];
+
+        // Primary: gemini-3.7-pro (fallback to gemini-2.5-pro / gemini-3.7-flash if model name differs)
+        const modelsToTry = ['gemini-3.7-pro', 'gemini-2.5-pro', 'gemini-3.7-flash', 'gemini-2.5-flash'];
+        let activeModel = modelsToTry[0];
+
+        // Agentic Tool Loop (up to 3 iterations for multi-hop tool execution)
+        for (let step = 0; step < 3; step++) {
+          let response: any = null;
+          let lastError: any = null;
+
+          for (const modelName of modelsToTry) {
+            try {
+              response = await geminiClient.models.generateContent({
+                model: modelName,
+                contents,
+                config: {
+                  systemInstruction: systemPrompt,
+                  tools: geminiTools,
+                  temperature: 0.4
+                }
+              });
+              activeModel = modelName;
+              break;
+            } catch (err: any) {
+              lastError = err;
+              continue;
+            }
+          }
+
+          if (!response) {
+            throw lastError || new Error("Failed to generate content across Gemini models");
+          }
+
+          const functionCalls = response.functionCalls;
+          const candidate = response.candidates?.[0];
+
+          if (!functionCalls || functionCalls.length === 0) {
+            finalSpokenReply = response.text || "Understood, sir.";
+            break;
+          }
+
+          if (candidate?.content) {
+            contents.push(candidate.content);
+          }
+
+          // Execute each function call against SQLite
+          const functionResponseParts: any[] = [];
+          for (const call of functionCalls) {
+            toolsUsed.push(call.name);
+            const { result, intent, actionData } = await executeToolCall(call.name, call.args || {});
+            primaryIntent = intent;
+            mergedActionData = { ...mergedActionData, ...actionData };
+
+            functionResponseParts.push({
+              functionResponse: {
+                name: call.name,
+                response: result
+              }
+            });
+          }
+
+          contents.push({
+            role: 'user',
+            parts: functionResponseParts
+          });
+        }
+
+        const cleanSpoken = finalSpokenReply.replace(/[*#_`]/g, '').trim();
+        const latencyMs = Date.now() - startTime;
+
+        // Persist to SQLite
+        dbRepository.saveConversation({
+          id: `turn-${Math.random().toString(36).substring(2, 9)}`,
+          sessionId,
+          role: 'user',
+          text: params.message
+        });
+
+        dbRepository.saveConversation({
+          id: `turn-${Math.random().toString(36).substring(2, 9)}`,
+          sessionId,
+          role: 'friday',
+          text: cleanSpoken,
+          intent: primaryIntent,
+          latencyMs,
+          toolsUsed
+        });
+
+        return {
+          intent: primaryIntent,
+          spokenReply: cleanSpoken,
+          actionData: mergedActionData,
+          toolsUsed,
+          latencyMs,
+          provider: activeModel.includes('pro') ? 'gemini-3.7-pro' : 'gemini-flash'
+        };
+
+      } catch (err: any) {
+        console.warn('Gemini 3.7 Pro execution error, trying fallback:', err?.message);
+      }
+    }
+
+    // 3. Fallback: OpenAI GPT-4o
+    const openAiClient = this.getOpenAIClient();
     if (openAiClient) {
       try {
         const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -86,7 +214,6 @@ Guidelines:
         let mergedActionData: any = {};
         const toolsUsed: string[] = [];
 
-        // Agentic Tool Loop (up to 3 iterations for multi-step reasoning)
         for (let step = 0; step < 3; step++) {
           const completion = await openAiClient.chat.completions.create({
             model: 'gpt-4o',
@@ -105,7 +232,6 @@ Guidelines:
             break;
           }
 
-          // Execute each tool call
           for (const toolCall of msg.tool_calls) {
             if (toolCall.type === 'function') {
               const name = toolCall.function.name;
@@ -130,11 +256,9 @@ Guidelines:
           }
         }
 
-        // Clean any markdown formatting for TTS
         const cleanSpoken = finalSpokenReply.replace(/[*#_`]/g, '').trim();
         const latencyMs = Date.now() - startTime;
 
-        // Save conversation into SQLite
         dbRepository.saveConversation({
           id: `turn-${Math.random().toString(36).substring(2, 9)}`,
           sessionId,
@@ -162,61 +286,14 @@ Guidelines:
         };
 
       } catch (err: any) {
-        console.warn('OpenAI GPT-4o execution error, falling back:', err?.message);
-      }
-    }
-
-    // 3. Fallback: Gemini API
-    const geminiClient = this.getGeminiClient();
-    if (geminiClient) {
-      try {
-        const geminiPrompt = `${systemPrompt}
-User message: "${params.message}"
-Identify intent and produce a JSON with "intent", "spokenReply", and "actionData".`;
-
-        const response = await geminiClient.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: geminiPrompt,
-          config: { responseMimeType: 'application/json' }
-        });
-
-        const parsed = JSON.parse(response.text || '{}');
-        const latencyMs = Date.now() - startTime;
-        const cleanSpoken = (parsed.spokenReply || response.text || "Understood, sir.").replace(/[*#_`]/g, '').trim();
-
-        dbRepository.saveConversation({
-          id: `turn-${Math.random().toString(36).substring(2, 9)}`,
-          sessionId,
-          role: 'user',
-          text: params.message
-        });
-
-        dbRepository.saveConversation({
-          id: `turn-${Math.random().toString(36).substring(2, 9)}`,
-          sessionId,
-          role: 'friday',
-          text: cleanSpoken,
-          intent: parsed.intent || 'general_chat',
-          latencyMs
-        });
-
-        return {
-          intent: parsed.intent || 'general_chat',
-          spokenReply: cleanSpoken,
-          actionData: parsed.actionData || {},
-          toolsUsed: ['gemini_nlu'],
-          latencyMs,
-          provider: 'gemini'
-        };
-      } catch (err) {
-        console.warn('Gemini fallback error:', err);
+        console.warn('OpenAI fallback error:', err?.message);
       }
     }
 
     // 4. Intelligent Local Executive Brain with SQLite Tool Execution
     const lower = params.message.toLowerCase();
     let localIntent = 'general_chat';
-    let localReply = "Understood, sir. Systems are standing by.";
+    let localReply = "Understood, sir. All core executive systems remain operational.";
     let localActionData: any = {};
     const localToolsUsed: string[] = [];
 
