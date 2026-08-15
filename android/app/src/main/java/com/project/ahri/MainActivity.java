@@ -4,15 +4,18 @@ import android.content.Intent;
 import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
 import com.project.ahri.plugins.OverlayPlugin;
+import com.project.ahri.plugins.WakeWordPlugin;
 
 public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(OverlayPlugin.class);
+        registerPlugin(WakeWordPlugin.class);
         super.onCreate(savedInstanceState);
         handleVoiceIntent(getIntent());
     }
+
 
     @Override
     protected void onNewIntent(Intent intent) {
