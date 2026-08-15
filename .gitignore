@@ -1,10 +1,20 @@
+# Node & Build
 node_modules/
-build/
 dist/
+build/
 release/
 coverage/
-.DS_Store
 *.log
+.DS_Store
+
+# IDEs and Editor
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Environment Variables & Secrets
 .env
 .env.local
 .env.production
@@ -13,19 +23,29 @@ coverage/
 !.env.example
 !.env.local.example
 !.env.production.example
+serviceAccountKey*.json
+firebase-applet-config.json
+*firebase*config*.json
+*firebase*.json
+!firebase.json
+google-services.json
+android/**/google-services.json
+*.key
+*.pem
+*.keystore
+*.jks
+
+# SQLite & Data
 *.db
 *.db-wal
 *.db-shm
 data/
 data/*.db
-firebase-applet-config.json
-*firebase*config*.json
-*firebase*.json
-!firebase.json
-serviceAccountKey*.json
-google-services.json
-android/**/google-services.json
+
+# Android Studio & Gradle Build Artefacts
 android/.gradle/
+android/.idea/
+android/build/
 android/app/build/
-*.key
-*.pem
+android/local.properties
+android/capacitor-cordova-android-plugins/
