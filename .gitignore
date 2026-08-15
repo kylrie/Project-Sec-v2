@@ -7,9 +7,12 @@ coverage/
 *.log
 .env
 .env.local
+.env.production
 .env.*.local
+.env.*.production
 !.env.example
 !.env.local.example
+!.env.production.example
 *.db
 *.db-wal
 *.db-shm
