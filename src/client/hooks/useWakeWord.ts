@@ -8,9 +8,14 @@ export function useWakeWord() {
   const [isWakeWordActive, setIsWakeWordActive] = useState(false);
   const [transcript, setTranscript] = useState('');
   const serviceRef = useRef<WakeWordService | null>(null);
+  const initializedRef = useRef(false); // BUG 3 FIX: Guard against double-init
   const { processCommand, pendingAction, isConfirming, confirmAction, cancelAction } = useActionBroker();
 
-  const handleTranscript = useCallback(async (text: string) => {
+  // BUG 3 FIX: Use a ref for the transcript handler so it never changes identity
+  const handleTranscriptRef = useRef<(text: string) => void>(() => {});
+
+  // Keep the ref always pointing to the latest handler logic
+  handleTranscriptRef.current = async (text: string) => {
     setTranscript(text);
     setIsListening(false);
     
@@ -36,9 +41,13 @@ export function useWakeWord() {
     } catch (err) {
       console.error('Command failed:', err);
     }
-  }, [processCommand]);
+  };
 
+  // BUG 3 FIX: Initialize only ONCE — empty dependency array, stable callback via ref
   useEffect(() => {
+    if (initializedRef.current) return; // Guard re-entry
+    initializedRef.current = true;
+
     serviceRef.current = new WakeWordService({
       onWakeWordDetected: () => {
         console.log('Wake word detected!');
@@ -46,7 +55,7 @@ export function useWakeWord() {
       },
       onListeningStart: () => setIsListening(true),
       onListeningEnd: () => setIsListening(false),
-      onTranscript: handleTranscript,
+      onTranscript: (text: string) => handleTranscriptRef.current(text), // Stable wrapper
       onError: (err: any) => console.error('Wake word error:', err),
     });
 
@@ -56,9 +65,11 @@ export function useWakeWord() {
 
     return () => {
       serviceRef.current?.stop();
+      serviceRef.current = null;
+      initializedRef.current = false;
       setIsWakeWordActive(false);
     };
-  }, [handleTranscript]);
+  }, []); // BUG 3 FIX: Empty deps — never re-creates the service
 
   const toggleWakeWord = useCallback(() => {
     if (isWakeWordActive) {

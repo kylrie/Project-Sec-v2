@@ -164,22 +164,27 @@ Guidelines:
         const cleanSpoken = finalSpokenReply.replace(/[*#_`]/g, '').trim();
         const latencyMs = Date.now() - startTime;
 
-        // Persist to SQLite
-        dbRepository.saveConversation({
-          id: `turn-${Math.random().toString(36).substring(2, 9)}`,
-          sessionId,
-          role: 'user',
-          text: params.message
-        });
-
-        dbRepository.saveConversation({
-          id: `turn-${Math.random().toString(36).substring(2, 9)}`,
-          sessionId,
-          role: 'friday',
-          text: cleanSpoken,
-          intent: primaryIntent,
-          latencyMs,
-          toolsUsed
+        // BUG 5 FIX: Fire-and-forget async SQLite writes — don't block response
+        Promise.resolve().then(() => {
+          try {
+            dbRepository.saveConversation({
+              id: `turn-${Math.random().toString(36).substring(2, 9)}`,
+              sessionId,
+              role: 'user',
+              text: params.message
+            });
+            dbRepository.saveConversation({
+              id: `turn-${Math.random().toString(36).substring(2, 9)}`,
+              sessionId,
+              role: 'friday',
+              text: cleanSpoken,
+              intent: primaryIntent,
+              latencyMs,
+              toolsUsed
+            });
+          } catch (e) {
+            console.warn('[SecretaryBrain] Async write failed:', e);
+          }
         });
 
         return {
@@ -259,21 +264,27 @@ Guidelines:
         const cleanSpoken = finalSpokenReply.replace(/[*#_`]/g, '').trim();
         const latencyMs = Date.now() - startTime;
 
-        dbRepository.saveConversation({
-          id: `turn-${Math.random().toString(36).substring(2, 9)}`,
-          sessionId,
-          role: 'user',
-          text: params.message
-        });
-
-        dbRepository.saveConversation({
-          id: `turn-${Math.random().toString(36).substring(2, 9)}`,
-          sessionId,
-          role: 'friday',
-          text: cleanSpoken,
-          intent: primaryIntent,
-          latencyMs,
-          toolsUsed
+        // BUG 5 FIX: Fire-and-forget async SQLite writes
+        Promise.resolve().then(() => {
+          try {
+            dbRepository.saveConversation({
+              id: `turn-${Math.random().toString(36).substring(2, 9)}`,
+              sessionId,
+              role: 'user',
+              text: params.message
+            });
+            dbRepository.saveConversation({
+              id: `turn-${Math.random().toString(36).substring(2, 9)}`,
+              sessionId,
+              role: 'friday',
+              text: cleanSpoken,
+              intent: primaryIntent,
+              latencyMs,
+              toolsUsed
+            });
+          } catch (e) {
+            console.warn('[SecretaryBrain] Async write failed:', e);
+          }
         });
 
         return {
@@ -357,21 +368,27 @@ Guidelines:
 
     const latencyMs = Date.now() - startTime;
 
-    dbRepository.saveConversation({
-      id: `turn-${Math.random().toString(36).substring(2, 9)}`,
-      sessionId,
-      role: 'user',
-      text: params.message
-    });
-
-    dbRepository.saveConversation({
-      id: `turn-${Math.random().toString(36).substring(2, 9)}`,
-      sessionId,
-      role: 'friday',
-      text: localReply,
-      intent: localIntent,
-      latencyMs,
-      toolsUsed: localToolsUsed
+    // BUG 5 FIX: Fire-and-forget async SQLite writes
+    Promise.resolve().then(() => {
+      try {
+        dbRepository.saveConversation({
+          id: `turn-${Math.random().toString(36).substring(2, 9)}`,
+          sessionId,
+          role: 'user',
+          text: params.message
+        });
+        dbRepository.saveConversation({
+          id: `turn-${Math.random().toString(36).substring(2, 9)}`,
+          sessionId,
+          role: 'friday',
+          text: localReply,
+          intent: localIntent,
+          latencyMs,
+          toolsUsed: localToolsUsed
+        });
+      } catch (e) {
+        console.warn('[SecretaryBrain] Async write failed:', e);
+      }
     });
 
     return {

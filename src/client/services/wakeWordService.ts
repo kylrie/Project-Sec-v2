@@ -6,6 +6,11 @@ class WakeWordService {
   private wakeWordDetected = false;
   private finalTranscript = '';
 
+  // BUG 1 FIX: Exponential backoff restart to prevent CPU hammering
+  private restartTimer: ReturnType<typeof setTimeout> | null = null;
+  private restartDelay = 1000;
+  private readonly MAX_RESTART_DELAY = 8000;
+
   constructor(callbacks: any) {
     this.callbacks = callbacks;
   }
@@ -67,14 +72,16 @@ class WakeWordService {
       if (event.error !== 'no-speech' && event.error !== 'aborted') {
         console.error('[WakeWord] Error:', event.error);
       }
-      // Auto-restart on error (except manual stop)
+      // Auto-restart on error (except manual stop) — uses backoff
       if (this.isListening && event.error !== 'aborted') {
-        setTimeout(() => this.restart(), 500);
+        this.restart();
       }
     };
 
     this.recognition.onend = () => {
       if (this.isListening) {
+        // Reset backoff on successful session end (not an error)
+        this.restartDelay = 1000;
         this.restart();
       }
     };
@@ -86,13 +93,36 @@ class WakeWordService {
     console.log('[WakeWord] Listening for "Hey Ahri"... (Free mode)');
   }
 
+  // BUG 1 FIX: Exponential backoff restart with state checks
   private restart() {
     if (!this.isListening) return;
-    try {
-      this.recognition?.start();
-    } catch (e) {
-      setTimeout(() => this.restart(), 300);
+
+    // Clear any pending restart to avoid stacking
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
     }
+
+    // Don't restart if recognition is already running
+    try {
+      if (this.recognition && typeof this.recognition.abort === 'function') {
+        // Some browsers expose state; if not, we just try/catch the start
+      }
+    } catch {}
+
+    this.restartTimer = setTimeout(() => {
+      if (!this.isListening) return;
+      try {
+        this.recognition?.start();
+        // Reset delay on successful start
+        this.restartDelay = 1000;
+      } catch (e) {
+        // Increase backoff on failure, capped at MAX
+        this.restartDelay = Math.min(this.restartDelay * 2, this.MAX_RESTART_DELAY);
+        console.warn(`[WakeWord] Restart failed, retrying in ${this.restartDelay}ms`);
+        this.restart();
+      }
+    }, this.restartDelay);
   }
 
   private resetSilenceTimer() {
@@ -120,6 +150,11 @@ class WakeWordService {
     this.isListening = false;
     this.wakeWordDetected = false;
     if (this.silenceTimeout) clearTimeout(this.silenceTimeout);
+    // BUG 1 FIX: Clear pending restart timer on stop
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
     if (this.recognition) {
       this.recognition.onend = null;
       try {

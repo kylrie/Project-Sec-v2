@@ -64,7 +64,7 @@ export async function gatherUserContext(userId: string = 'dev-user-001'): Promis
 
   if (upcomingEvents.length === 0) {
     try {
-      upcomingEvents = sqliteDbRepository.listEvents('Today');
+      upcomingEvents = sqliteDbRepository.listCalendarEvents('Today');
     } catch {}
   }
 

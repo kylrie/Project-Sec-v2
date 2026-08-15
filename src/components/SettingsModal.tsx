@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { VoiceSettings, FridayPersonality } from '../types/friday';
-import { X, Mic, Volume2, Sliders, Sparkles, Globe, Keyboard, Check, VolumeX, Layers, Smartphone, Monitor } from 'lucide-react';
+import { X, Mic, Volume2, Sliders, Sparkles, Globe, Keyboard, Check, VolumeX, Layers, Smartphone, Monitor, Radio } from 'lucide-react';
 
 import { soundEffects } from '../services/audioEffects';
 import { Overlay } from '../client/plugins/Overlay';

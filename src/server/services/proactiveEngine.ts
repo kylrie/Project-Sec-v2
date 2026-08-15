@@ -45,10 +45,10 @@ export class ProactiveEngine {
           .limit(5);
         if (data) events = data;
       } catch (e) {
-        events = sqliteDbRepository.listEvents('Today');
+        events = sqliteDbRepository.listCalendarEvents('Today');
       }
     } else {
-      events = sqliteDbRepository.listEvents('Today');
+      events = sqliteDbRepository.listCalendarEvents('Today');
     }
 
     // Evaluate upcoming meetings in next 30 minutes

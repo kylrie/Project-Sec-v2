@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { apiGet, apiPost } from '@/client/services/apiClient';
 import { Suggestion } from '@/client/components/SuggestionCard';
 
 export function useSuggestions() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // BUG 4 FIX: Track already-actioned suggestion IDs to prevent duplicate API calls
+  const actionedRef = useRef<Set<string>>(new Set());
   
   const fetchSuggestions = async () => {
     setLoading(true);
@@ -24,18 +27,26 @@ export function useSuggestions() {
     const interval = setInterval(fetchSuggestions, 15 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
-  
-  const dismiss = (id: string) => {
+
+  // BUG 4 FIX: Deduplicated dismiss — won't fire API twice for same suggestion
+  const dismiss = useCallback((id: string) => {
+    if (actionedRef.current.has(id)) return; // Already handled
+    actionedRef.current.add(id);
+
     setSuggestions(prev => prev.filter(s => s.id !== id));
     apiPost('/api/suggestions/feedback', { suggestionId: id, action: 'dismissed' }).catch(() => {});
-  };
-  
-  const accept = async (suggestion: Suggestion) => {
+  }, []);
+
+  // BUG 4 FIX: Deduplicated accept
+  const accept = useCallback(async (suggestion: Suggestion) => {
+    if (actionedRef.current.has(suggestion.id)) return; // Already handled
+    actionedRef.current.add(suggestion.id);
+
     // Execute the action
     await executeSuggestionAction(suggestion);
-    dismiss(suggestion.id);
+    setSuggestions(prev => prev.filter(s => s.id !== suggestion.id));
     apiPost('/api/suggestions/feedback', { suggestionId: suggestion.id, action: 'accepted' }).catch(() => {});
-  };
+  }, []);
   
   return { suggestions, loading, dismiss, accept, refresh: fetchSuggestions };
 }
