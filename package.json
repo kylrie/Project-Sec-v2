@@ -2,8 +2,11 @@
   "name": "project-ahri",
   "private": true,
   "version": "1.0.0",
+  "description": "Project Ahri Tactical Voice Assistant",
+  "author": "Project Ahri Team",
   "type": "module",
   "main": "electron/main.cjs",
+
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
@@ -70,9 +73,11 @@
   "build": {
     "appId": "com.project.ahri",
     "productName": "Project Ahri",
+    "npmRebuild": false,
     "directories": {
       "output": "release"
     },
+
     "files": [
       "dist/**/*",
       "electron/**/*",
