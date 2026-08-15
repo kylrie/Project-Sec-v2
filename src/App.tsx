@@ -186,11 +186,11 @@ export default function App() {
           <div className="flex items-center space-x-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <h1 className="text-sm font-semibold tracking-[0.25em] text-zinc-100 uppercase font-mono">
-              FRIDAY
+              AHRI
             </h1>
           </div>
           <span className="text-[10px] font-mono text-zinc-500 tracking-wider">
-            AI EXECUTIVE
+            PROJECT AHRI • EXECUTIVE
           </span>
         </div>
 
@@ -222,7 +222,7 @@ export default function App() {
             state={state}
             frequencies={frequencies}
             audioLevel={audioLevel}
-            wakeWord={settings.wakeWord}
+            wakeWord={settings.wakeWord || 'Hey Ahri'}
             latencyMs={lastLatencyMs}
             onCoreClick={handleCoreClick}
             onInterrupt={interrupt}
@@ -255,7 +255,7 @@ export default function App() {
                 exit={{ opacity: 0, y: -6 }}
                 className="text-base sm:text-lg font-light text-zinc-200 leading-relaxed max-w-lg drop-shadow-sm"
               >
-                {conversations[conversations.length - 1].role === 'friday'
+                {conversations[conversations.length - 1].role === 'ahri' || conversations[conversations.length - 1].role === 'friday'
                   ? conversations[conversations.length - 1].text
                   : ''}
               </motion.p>
@@ -293,14 +293,14 @@ export default function App() {
             <span className={`w-3 h-3 rounded-full ${isSpeaking ? 'bg-emerald-400 animate-ping' : isListening ? 'bg-cyan-400 animate-ping' : 'bg-sky-400'}`} />
             
             <span className="font-semibold tracking-[0.2em]">
-              {isSpeaking ? 'FRIDAY Speaking (Stop)' : isListening ? 'Listening...' : 'Talk with Friday'}
+              {isSpeaking ? 'AHRI Speaking (Stop)' : isListening ? 'Listening...' : 'Talk with Ahri'}
             </span>
 
             <Mic className={`w-4 h-4 ${isSpeaking ? 'text-emerald-300 animate-pulse' : isListening ? 'text-cyan-300 animate-bounce' : 'text-zinc-400 group-hover:text-sky-400'} transition-colors`} />
           </button>
 
           <p className="mt-3 text-[11px] font-mono text-zinc-500 tracking-wider">
-            Press to talk • or say <span className="text-zinc-300">"{settings.wakeWord}"</span>
+            Press to talk • or say <span className="text-zinc-300">"{settings.wakeWord || 'Hey Ahri'}"</span>
           </p>
         </div>
       </main>

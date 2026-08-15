@@ -387,15 +387,15 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
 
       const incoming = (finalStr || interimStr).trim();
       const lower = incoming.toLowerCase();
-      const wakeTarget = (settings.wakeWord || 'Hey Friday').toLowerCase();
+      const wakeTarget = (settings.wakeWord || 'Hey Ahri').toLowerCase();
 
-      // Check for wake word trigger
-      if (!isListeningIntentRef.current && (lower.includes(wakeTarget) || lower.includes('friday') || lower.includes('jarvis'))) {
+      // Check for wake word trigger (supports Ahri, Hey Ahri, and legacy aliases)
+      if (!isListeningIntentRef.current && (lower.includes(wakeTarget) || lower.includes('ahri') || lower.includes('friday') || lower.includes('jarvis'))) {
         isListeningIntentRef.current = true;
         setState('listening');
         if (settings.soundEffects) soundEffects.playWakeChime();
 
-        const match = incoming.match(new RegExp(`(?:hey )?(?:friday|jarvis)[,\\s]*(.*)`, 'i'));
+        const match = incoming.match(new RegExp(`(?:hey\\s+)?(?:ahri|friday|jarvis)[,\\s]*(.*)`, 'i'));
         const remainder = match && match[1] ? match[1].trim() : '';
         if (remainder && finalStr) {
           setTranscript(remainder);

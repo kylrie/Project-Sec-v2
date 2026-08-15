@@ -328,7 +328,7 @@ export const DEFAULT_COMMUNICATION_SETTINGS: CommunicationSettings = {
 };
 
 export const DEFAULT_SETTINGS: VoiceSettings = {
-  wakeWord: 'Hey Friday',
+  wakeWord: 'Hey Ahri',
   isWakeWordEnabled: true,
   voiceName: '',
   rate: 1.05,

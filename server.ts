@@ -14,7 +14,7 @@ async function startServer() {
   
   // Initialize SQLite Database Tables & Seeds
   initDatabase();
-  console.log("[FRIDAY Database] SQLite Neural Storage Initialized with 11 Tables.");
+  console.log("[Project Ahri Database] SQLite Neural Storage Initialized with 11 Tables.");
 
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: "/live" });
@@ -25,7 +25,7 @@ async function startServer() {
   const clients = new Set<WebSocket>();
   wss.on("connection", (ws) => {
     clients.add(ws);
-    ws.send(JSON.stringify({ type: "SYSTEM_READY", message: "FRIDAY Neural Core & SQLite Brain Online", timestamp: Date.now() }));
+    ws.send(JSON.stringify({ type: "SYSTEM_READY", message: "Project Ahri Neural Core & SQLite Brain Online", timestamp: Date.now() }));
     
     ws.on("message", async (rawMessage) => {
       try {
@@ -47,9 +47,9 @@ async function startServer() {
   app.get("/api/health", (req, res) => {
     res.json({
       status: "operational",
-      system: "FRIDAY Executive Assistant Core",
+      system: "Project Ahri Executive Core",
       engine: "Gemini 3.7 Pro + SQLite Neural Storage",
-      version: "3.1.0-enterprise",
+      version: "3.2.0-enterprise",
       uptime: process.uptime(),
       timestamp: new Date().toISOString()
     });
