@@ -8,7 +8,9 @@
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
-    "electron:dev": "concurrently \"tsx server.ts\" \"wait-on http://localhost:3000/api/health && electron electron/main.cjs\"",
+    "electron:dev": "concurrently \"tsx server.ts\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron:build": "npm run build && electron-builder --win",
+    "electron:preview": "npm run build && electron .",
     "build:electron": "npm run build && electron-builder --win",
     "build:exe": "npm run build && electron-builder --win nsis",
     "cap:sync": "npx cap sync",
@@ -63,7 +65,6 @@
   "build": {
     "appId": "com.project.ahri",
     "productName": "Project Ahri",
-    "npmRebuild": false,
     "directories": {
       "output": "release"
     },
@@ -71,31 +72,32 @@
       "dist/**/*",
       "electron/**/*",
       "public/**/*",
+      "data/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**/*",
+      "**/node_modules/@tailwindcss/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "data",
+        "to": "data",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "win": {
       "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        }
+        "nsis",
+        "portable"
       ],
       "icon": "public/icon-256.png"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "Project Ahri"
+      "allowToChangeInstallationDirectory": true
     }
   }
 }
