@@ -5,8 +5,10 @@ const config: CapacitorConfig = {
   appName: 'Project Ahri',
   webDir: 'dist',
   server: {
-    // In dev, allow loading from local network
-    cleartext: true
+    cleartext: true,
+    // For dev testing on local network, uncomment and set your PC's IP:
+    // url: 'http://192.168.1.X:3000',
+    // androidScheme: 'http'
   },
   plugins: {
     SplashScreen: {
