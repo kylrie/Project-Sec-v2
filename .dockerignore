@@ -1,0 +1,13 @@
+node_modules/
+dist/
+release/
+.env
+.env.local
+.env.production
+*.db
+data/*.db
+.firebase/
+.git/
+.github/
+android/
+electron/
