@@ -20,5 +20,9 @@ firebase-applet-config.json
 *firebase*.json
 !firebase.json
 serviceAccountKey*.json
+google-services.json
+android/**/google-services.json
+android/.gradle/
+android/app/build/
 *.key
 *.pem

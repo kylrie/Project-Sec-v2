@@ -1,16 +1,17 @@
-import type { CapacitorConfig } from '@capacitor/cli';
+import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.project.ahri',
   appName: 'Project Ahri',
   webDir: 'dist',
   server: {
-    androidScheme: 'https',
+    // In dev, allow loading from local network
     cleartext: true
   },
   plugins: {
-    PushNotifications: {
-      presentationOptions: ['badge', 'sound', 'alert']
+    SplashScreen: {
+      launchShowDuration: 2000,
+      backgroundColor: '#030712'
     }
   }
 };
