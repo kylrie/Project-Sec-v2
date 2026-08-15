@@ -1,20 +1,28 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { WakeWordService } from '../services/wakeWordService';
 import { apiPost } from '../services/apiClient';
+import { useActionBroker } from './useActionBroker';
 
 export function useWakeWord() {
   const [isListening, setIsListening] = useState(false);
   const [isWakeWordActive, setIsWakeWordActive] = useState(false);
   const [transcript, setTranscript] = useState('');
   const serviceRef = useRef<WakeWordService | null>(null);
+  const { processCommand, pendingAction, isConfirming, confirmAction, cancelAction } = useActionBroker();
 
   const handleTranscript = useCallback(async (text: string) => {
     setTranscript(text);
     setIsListening(false);
     
-    // Auto-send to AI
+    // Step 1: First, check if this is an executive action (food, ride, money, booking)
+    const actionResult = await processCommand(text);
+    if (actionResult && actionResult.requiresConfirmation) {
+      return; // Pause speech and show confirmation modal
+    }
+
+    // Step 2: If not an action, send to normal AI brain
     try {
-      const result = await apiPost('/api/command', {
+      const result = await apiPost<{ spokenReply?: string }>('/api/command', {
         message: text,
         sessionId: 'voice-session',
         personality: 'professional',
@@ -28,7 +36,7 @@ export function useWakeWord() {
     } catch (err) {
       console.error('Command failed:', err);
     }
-  }, []);
+  }, [processCommand]);
 
   useEffect(() => {
     serviceRef.current = new WakeWordService({
@@ -43,7 +51,7 @@ export function useWakeWord() {
     });
 
     serviceRef.current.initialize().then(() => {
-      // Ready (inactive until toggled on or user starts)
+      // Ready
     });
 
     return () => {
@@ -62,7 +70,16 @@ export function useWakeWord() {
     }
   }, [isWakeWordActive]);
 
-  return { isListening, isWakeWordActive, transcript, toggleWakeWord };
+  return {
+    isListening,
+    isWakeWordActive,
+    transcript,
+    toggleWakeWord,
+    pendingAction,
+    isConfirming,
+    confirmAction,
+    cancelAction
+  };
 }
 
 function playChime() {
