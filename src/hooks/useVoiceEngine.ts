@@ -4,7 +4,6 @@ import { soundEffects } from '../services/audioEffects';
 import { storageService } from '../services/storage';
 import { tryParseLocalIntent } from '../services/localIntentParser';
 import { VADService } from '../services/vadService';
-import { PorcupineService } from '../services/porcupineService';
 
 declare global {
   interface Window {
@@ -42,9 +41,9 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
   const lastStateUpdateTimeRef = useRef<number>(0);
 
   const vadServiceRef = useRef<VADService | null>(null);
-  const porcupineServiceRef = useRef<PorcupineService | null>(null);
   const transcriptRef = useRef<string>('');
   const interimTranscriptRef = useRef<string>('');
+  const processCommandRef = useRef<(spokenText: string) => Promise<void>>(() => Promise.resolve());
 
 
   // Initialize SpeechSynthesis and unlock on user interaction
@@ -64,9 +63,6 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
   // Setup Web Audio Analyser & VAD (Non-blocking with throttled React updates)
   const setupAudioAnalyser = useCallback(async () => {
     if (isSettingUpMicRef.current) return;
-    if (audioContextRef.current && audioContextRef.current.state === 'running') {
-      return;
-    }
 
     try {
       isSettingUpMicRef.current = true;
@@ -76,26 +72,37 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
         return;
       }
 
-      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-        await audioContextRef.current.resume();
-        isSettingUpMicRef.current = false;
-        return;
-      }
-
-      if (!micStreamRef.current) {
-        const streamPromise = navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        const timeoutPromise = new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Mic timeout')), 2500));
-        const stream = await Promise.race([streamPromise, timeoutPromise]) as MediaStream;
-        if (!stream) {
+      if (audioContextRef.current) {
+        if (audioContextRef.current.state === 'suspended') {
+          await audioContextRef.current.resume().catch(() => {});
+        }
+        if (audioContextRef.current.state === 'running') {
+          setIsMicAvailable(true);
           isSettingUpMicRef.current = false;
           return;
         }
-        micStreamRef.current = stream;
+      }
+
+      if (!micStreamRef.current || !micStreamRef.current.active) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          micStreamRef.current = stream;
+        } catch (e: any) {
+          console.warn('[VoiceEngine] Microphone access not yet granted or busy:', e.message);
+          isSettingUpMicRef.current = false;
+          return;
+        }
+      }
+
+      if (audioContextRef.current) {
+        try {
+          await audioContextRef.current.close();
+        } catch {}
       }
 
       const ctx = new AudioCtx();
       if (ctx.state === 'suspended') {
-        await ctx.resume();
+        await ctx.resume().catch(() => {});
       }
       audioContextRef.current = ctx;
 
@@ -117,14 +124,13 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
               if (pendingText) {
                 console.log('[VAD] 1.5s Silence detected. Auto-submitting spoken command:', pendingText);
                 isListeningIntentRef.current = false;
-                processCommand(pendingText);
+                processCommandRef.current(pendingText);
               }
             }
           }
         });
       }
       vadServiceRef.current.start(micStreamRef.current, ctx);
-
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
@@ -153,7 +159,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       updateWaveform();
       setIsMicAvailable(true);
     } catch (err) {
-      console.warn('Microphone audio analyser fallback active', err);
+      console.warn('[VoiceEngine] Microphone analyser notice:', err);
     } finally {
       isSettingUpMicRef.current = false;
     }
@@ -380,6 +386,8 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     }
   }, [interrupt, onTurnComplete, onLocalAction, settings.personality, speak]);
 
+  processCommandRef.current = processCommand;
+
   // Speech Recognition Initializer
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -476,25 +484,11 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       }
     }
 
-    // Initialize Porcupine local wake word service if access key is present
-    if (!porcupineServiceRef.current) {
-      porcupineServiceRef.current = new PorcupineService({
-        onWakeWordDetected: () => {
-          console.log('[VoiceEngine] Porcupine triggered wake chime & listening mode');
-          startManualListening();
-        }
-      });
-      porcupineServiceRef.current.start().catch(() => {});
-    }
-
     return () => {
       try {
         recognition.stop();
       } catch {
         // ignore
-      }
-      if (porcupineServiceRef.current) {
-        porcupineServiceRef.current.stop().catch(() => {});
       }
       if (vadServiceRef.current) {
         vadServiceRef.current.stop();
