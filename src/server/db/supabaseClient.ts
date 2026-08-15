@@ -1,7 +1,11 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.SUPABASE_URL || 'https://placeholder-project.supabase.co';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || 'placeholder-key';
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  throw new Error('FATAL: SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in environment');
+}
 
 export const supabaseAdmin: SupabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {
@@ -52,7 +56,7 @@ export const dbRepository = {
         description: eventData.description || null,
         start_time: startDate.toISOString(),
         end_time: endDate.toISOString(),
-        location: eventData.location || 'Stark HQ / Virtual',
+        location: eventData.location || 'Executive HQ / Virtual',
         hangout_link: eventData.hangoutLink || null,
         attendees: eventData.attendees || [],
         status: 'confirmed'

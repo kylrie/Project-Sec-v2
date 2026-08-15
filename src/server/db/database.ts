@@ -420,7 +420,7 @@ export const dbRepository = {
     const date = event.date || 'Today';
     const endTime = event.endTime || 'Next hour';
     const attendeesJson = event.attendees ? JSON.stringify(event.attendees) : JSON.stringify([]);
-    stmt.run(id, event.title, event.startTime, endTime, date, event.location || 'Stark HQ / Remote', attendeesJson, Date.now());
+    stmt.run(id, event.title, event.startTime, endTime, date, event.location || 'Executive HQ / Remote', attendeesJson, Date.now());
     return { id, ...event, date, endTime };
   },
 
@@ -467,7 +467,7 @@ export const dbRepository = {
     const id = `em-draft-${Math.random().toString(36).substring(2, 9)}`;
     const stmt = db.prepare(`
       INSERT INTO emails (id, thread_id, from_name, from_email, to_email, subject, body, snippet, is_unread, urgency, created_at)
-      VALUES (?, ?, 'Tony Stark', 'tony@starkindustries.com', ?, ?, ?, ?, 0, 'standard', ?)
+      VALUES (?, ?, 'Executive User', 'user@example.com', ?, ?, ?, ?, 0, 'standard', ?)
     `);
     stmt.run(id, id, to, subject, body, body.substring(0, 80), Date.now());
     return { id, to, subject, body, status: 'draft_created' };

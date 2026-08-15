@@ -15,11 +15,11 @@ export async function authMiddleware(req: AuthenticatedRequest, res: Response, n
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     // Development bypass if Firebase Admin is not configured or in local sandbox
     if (process.env.NODE_ENV !== 'production' && (!adminAuth || req.headers['x-dev-user-id'])) {
-      const devUid = (req.headers['x-dev-user-id'] as string) || 'dev-executive-001';
+      const devUid = (req.headers['x-dev-user-id'] as string) || 'dev-user-001';
       req.user = {
         uid: devUid,
-        email: 'tony.stark@enterprise.io',
-        name: 'Tony Stark'
+        email: 'dev@localhost',
+        name: 'Dev User'
       };
       return next();
     }
@@ -40,9 +40,9 @@ export async function authMiddleware(req: AuthenticatedRequest, res: Response, n
     } else {
       // If adminAuth is not configured in local development, accept mock token
       req.user = {
-        uid: 'dev-executive-001',
-        email: 'tony.stark@enterprise.io',
-        name: 'Tony Stark'
+        uid: 'dev-user-001',
+        email: 'dev@localhost',
+        name: 'Dev User'
       };
       return next();
     }

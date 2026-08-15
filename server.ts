@@ -16,7 +16,7 @@ import { userRouter } from "./src/server/routes/user.js";
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
   
   // Initialize SQLite Database Tables & Seeds
   initDatabase();
@@ -32,7 +32,7 @@ async function startServer() {
   wss.on("connection", async (ws, req) => {
     const parsedUrl = url.parse(req.url || "", true);
     const token = parsedUrl.query.token as string | undefined;
-    let authenticatedUserId = "dev-executive-001";
+    let authenticatedUserId = "anonymous";
 
     if (token && adminAuth) {
       try {
@@ -84,7 +84,7 @@ async function startServer() {
       apiKey: process.env.FIREBASE_WEB_API_KEY || process.env.VITE_FIREBASE_API_KEY || "",
       authDomain: `${projectId}.firebaseapp.com`,
       storageBucket: `${projectId}.firebasestorage.app`,
-      messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "189100351312",
+      messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "",
       appId: process.env.FIREBASE_APP_ID || ""
     });
   });
@@ -104,7 +104,8 @@ async function startServer() {
   // Intent parsing and conversational AI powered by Gemini 3.7 Pro & Supabase/SQLite Memory
   app.post("/api/command", async (req, res) => {
     try {
-      const { message, sessionId = "default", personality = "professional", userTimezone = "UTC", userId = "dev-executive-001" } = req.body;
+      const { message, sessionId = "default", personality = "professional", userTimezone = "UTC" } = req.body;
+      const userId = req.body.userId || (req as any).user?.uid || "anonymous";
       
       // Process with Gemini 3.7 Pro AI Brain
       const result = await secretaryBrain.processCommand({
@@ -307,8 +308,8 @@ Tone: ${tone}.
 Return JSON:
 {
   "subject": "Clear, professional subject line",
-  "body": "Full body text formatted cleanly with greeting and signature for Tony Stark",
-  "spokenConfirmation": "1 short sentence for FRIDAY to read aloud asking for confirmation to send"
+  "body": "Full body text formatted cleanly with greeting and professional signature",
+  "spokenConfirmation": "1 short sentence for Ahri to read aloud asking for confirmation to send"
 }`;
 
       const response = await ai.models.generateContent({
@@ -335,7 +336,7 @@ Return JSON:
       }
 
       const ai = new GoogleGenAI({ apiKey: key });
-      const prompt = `You are FRIDAY, executive AI communication manager.
+      const prompt = `You are Project Ahri, executive AI communication manager.
 Summarize the last 24 hours of this group chat for "${groupName}".
 Messages:
 ${JSON.stringify(messages)}
@@ -345,7 +346,7 @@ Provide an accurate, concise executive briefing formatted in JSON:
   "threeSentenceSummary": "Exactly 3 clear, informative sentences summarizing all major topics, updates, and discussions.",
   "keyDecisions": string[],
   "pendingActionItems": string[],
-  "spokenBriefing": "A natural, smooth 2-sentence spoken debrief for FRIDAY TTS (NO markdown, no symbols)."
+  "spokenBriefing": "A natural, smooth 2-sentence spoken debrief for Ahri TTS (NO markdown, no symbols)."
 }`;
 
       const response = await ai.models.generateContent({
@@ -372,7 +373,7 @@ Provide an accurate, concise executive briefing formatted in JSON:
       }
 
       const ai = new GoogleGenAI({ apiKey: key });
-      const prompt = `You are FRIDAY, executive AI communication manager for Tony Stark.
+      const prompt = `You are Project Ahri, executive AI communication manager.
 Generate 3 context-aware, highly natural smart replies for an incoming message on ${channel}:
 Sender: "${sender}"
 Message: "${content}"
@@ -457,7 +458,7 @@ Format as JSON:
       }
 
       const ai = new GoogleGenAI({ apiKey: key });
-      const prompt = `You are FRIDAY, Tony Stark's executive AI secretary and right hand.
+      const prompt = `You are Project Ahri, autonomous executive AI secretary and right hand.
 Synthesize an intelligent, human-like Morning Briefing 2.0.
 Inputs:
 - Calendar: ${JSON.stringify(calendarEvents)}
