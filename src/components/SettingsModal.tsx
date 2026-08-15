@@ -26,29 +26,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [localSettings, setLocalSettings] = useState<VoiceSettings>(settings);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [bubbleEnabled, setBubbleEnabled] = useState(false);
-  const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(Boolean(settings.isWakeWordEnabled ?? settings.continuousListening ?? true));
   const [isCheckingBubble, setIsCheckingBubble] = useState(false);
+  const [isSavedRecently, setIsSavedRecently] = useState(false);
   const isAndroidNative = Overlay.isAvailable();
 
-
   useEffect(() => {
-    setLocalSettings(settings);
-  }, [settings]);
+    if (isOpen) {
+      setLocalSettings(settings);
+      setWakeWordEnabled(Boolean(settings.isWakeWordEnabled ?? settings.continuousListening ?? true));
+      setIsSavedRecently(false);
+    }
+  }, [settings, isOpen]);
 
   useEffect(() => {
     if (isAndroidNative && isOpen) {
       Overlay.isBubbleVisible().then((res) => {
         setBubbleEnabled(res.visible);
-      });
+      }).catch(() => {});
     }
   }, [isOpen, isAndroidNative]);
-
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       const loadVoices = () => {
-        const voices = window.speechSynthesis.getVoices();
-        setAvailableVoices(voices);
+        try {
+          const voices = window.speechSynthesis.getVoices();
+          if (voices && voices.length > 0) {
+            setAvailableVoices(voices);
+          }
+        } catch {}
       };
       loadVoices();
       window.speechSynthesis.onvoiceschanged = loadVoices;
@@ -83,26 +90,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleToggleWakeWord = async () => {
-    try {
-      if (!wakeWordEnabled) {
-        await WakeWord.initialize();
-        await WakeWord.startListening();
-        setWakeWordEnabled(true);
-      } else {
-        await WakeWord.stopListening();
-        setWakeWordEnabled(false);
+    const nextVal = !wakeWordEnabled;
+    setWakeWordEnabled(nextVal);
+    setLocalSettings(prev => ({
+      ...prev,
+      isWakeWordEnabled: nextVal,
+      continuousListening: nextVal
+    }));
+
+    if (isAndroidNative) {
+      try {
+        if (nextVal) {
+          await WakeWord.initialize();
+          await WakeWord.startListening();
+        } else {
+          await WakeWord.stopListening();
+        }
+      } catch (e) {
+        console.warn('Native wake word toggle notice:', e);
       }
-    } catch (e) {
-      console.warn('Error toggling native wake word:', e);
     }
   };
 
-
   const handleSave = () => {
+    const finalSettings: VoiceSettings = {
+      ...localSettings,
+      isWakeWordEnabled: wakeWordEnabled,
+      continuousListening: wakeWordEnabled
+    };
 
-    soundEffects.playAcknowledge();
-    onSaveSettings(localSettings);
-    onClose();
+    try {
+      if (finalSettings.soundEffects) {
+        soundEffects.playAcknowledge();
+      }
+    } catch {}
+
+    onSaveSettings(finalSettings);
+    setIsSavedRecently(true);
+    setTimeout(() => {
+      onClose();
+    }, 150);
   };
 
 
@@ -488,10 +515,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={handleSave}
-              className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-lg flex items-center space-x-1.5 shadow-[0_0_15px_rgba(14,165,233,0.3)] transition-colors"
+              className={`px-4 py-1.5 text-xs font-semibold rounded-lg flex items-center space-x-1.5 shadow-[0_0_15px_rgba(14,165,233,0.3)] transition-colors ${
+                isSavedRecently 
+                  ? 'bg-emerald-600 text-white' 
+                  : 'bg-sky-600 hover:bg-sky-500 text-white'
+              }`}
             >
               <Check className="w-3.5 h-3.5" />
-              <span>Apply Configuration</span>
+              <span>{isSavedRecently ? 'Saved!' : 'Apply Configuration'}</span>
             </button>
           </div>
         </div>

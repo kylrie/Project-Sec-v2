@@ -44,7 +44,14 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
   const transcriptRef = useRef<string>('');
   const interimTranscriptRef = useRef<string>('');
   const processCommandRef = useRef<(spokenText: string) => Promise<void>>(() => Promise.resolve());
+  const settingsRef = useRef<VoiceSettings>(settings);
 
+  useEffect(() => {
+    settingsRef.current = settings;
+    if (recognitionRef.current && settings.language) {
+      recognitionRef.current.lang = settings.language;
+    }
+  }, [settings]);
 
   // Initialize SpeechSynthesis and unlock on user interaction
   useEffect(() => {
@@ -173,13 +180,13 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       } catch (e) {
         console.warn('Cancel speech error', e);
       }
-      if (settings.soundEffects) soundEffects.playBargeIn();
+      if (settingsRef.current.soundEffects) soundEffects.playBargeIn();
       setState('interrupted');
       setTimeout(() => {
         setState('standby');
       }, 300);
     }
-  }, [settings.soundEffects]);
+  }, []);
 
   // Execute TTS (Fix for Chrome/Windows speech synthesis freeze)
   const speak = useCallback((text: string) => {
@@ -198,11 +205,12 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       const utterance = new SpeechSynthesisUtterance(cleanText);
       currentUtteranceRef.current = utterance;
 
+      const currentSettings = settingsRef.current;
       const voices = synthesisRef.current.getVoices();
       let selectedVoice = null;
 
-      if (settings.voiceName) {
-        selectedVoice = voices.find(v => v.name === settings.voiceName);
+      if (currentSettings.voiceName) {
+        selectedVoice = voices.find(v => v.name === currentSettings.voiceName);
       }
       if (!selectedVoice) {
         selectedVoice = voices.find(v => 
@@ -214,9 +222,9 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
         utterance.voice = selectedVoice;
       }
 
-      utterance.rate = settings.rate || 1.05;
-      utterance.pitch = settings.pitch || 1.0;
-      utterance.volume = settings.volume || 1.0;
+      utterance.rate = currentSettings.rate || 1.05;
+      utterance.pitch = currentSettings.pitch || 1.0;
+      utterance.volume = currentSettings.volume || 1.0;
 
       utterance.onend = () => {
         setState('standby');
@@ -245,7 +253,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       console.warn('TTS execution error', err);
       setState('standby');
     }
-  }, [settings]);
+  }, []);
 
   // Process User Command with 4-Second Timeout & Instant Local Fallback
   const processCommand = useCallback(async (spokenText: string) => {
@@ -423,14 +431,14 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
 
       const incoming = (finalStr || interimStr).trim();
       const lower = incoming.toLowerCase();
-      const wakeTarget = (settings.wakeWord || 'Hey Ahri').toLowerCase();
+      const wakeTarget = (settingsRef.current.wakeWord || 'Hey Ahri').toLowerCase();
 
       // Check for wake word trigger (supports Ahri, Hey Ahri, and legacy aliases)
       if (!isListeningIntentRef.current && (lower.includes(wakeTarget) || lower.includes('ahri') || lower.includes('friday') || lower.includes('jarvis'))) {
         isListeningIntentRef.current = true;
         setState('listening');
         setupAudioAnalyser();
-        if (settings.soundEffects) soundEffects.playWakeChime();
+        if (settingsRef.current.soundEffects) soundEffects.playWakeChime();
 
         const match = incoming.match(new RegExp(`(?:hey\\s+)?(?:ahri|friday|jarvis)[,\\s]*(.*)`, 'i'));
         const remainder = match && match[1] ? match[1].trim() : '';
@@ -465,7 +473,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     };
 
     recognition.onend = () => {
-      if (settings.continuousListening) {
+      if (settingsRef.current.continuousListening) {
         try {
           recognition.start();
         } catch {
@@ -500,7 +508,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
         micStreamRef.current.getTracks().forEach(t => t.stop());
       }
     };
-  }, [settings.continuousListening, settings.language, settings.wakeWord, settings.soundEffects, processCommand, setupAudioAnalyser]);
+  }, [settings.continuousListening, settings.language, setupAudioAnalyser]);
 
   // Start Manual Listening (Non-blocking, instant response)
   const startManualListening = useCallback(() => {
@@ -512,7 +520,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     transcriptRef.current = '';
     setInterimTranscript('');
     interimTranscriptRef.current = '';
-    if (settings.soundEffects) soundEffects.playWakeChime();
+    if (settingsRef.current.soundEffects) soundEffects.playWakeChime();
 
     if (recognitionRef.current) {
       try {
@@ -521,7 +529,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
         // Already started or active
       }
     }
-  }, [interrupt, settings.soundEffects, setupAudioAnalyser]);
+  }, [interrupt, setupAudioAnalyser]);
 
   // Stop Manual Listening and Send
   const stopManualListening = useCallback(() => {
