@@ -180,8 +180,6 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     }
   }, []);
 
-
-
   // Barge-In & Speech Interrupter
   const interrupt = useCallback(() => {
     if (synthesisRef.current) {
