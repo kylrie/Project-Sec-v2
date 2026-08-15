@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { VoiceSettings, FridayPersonality } from '../types/friday';
-import { X, Mic, Volume2, Sliders, Sparkles, Globe, Keyboard, Check, VolumeX, Layers, Smartphone } from 'lucide-react';
+import { X, Mic, Volume2, Sliders, Sparkles, Globe, Keyboard, Check, VolumeX, Layers, Smartphone, Monitor } from 'lucide-react';
+
 import { soundEffects } from '../services/audioEffects';
 import { Overlay } from '../client/plugins/Overlay';
 
@@ -344,7 +345,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span>{bubbleEnabled ? 'Hide Overlay' : 'Enable Floating Bubble'}</span>
             </button>
           </div>
+
+          {/* Windows Desktop Always-On-Top Mini Mode */}
+          <div className="p-4 rounded-xl bg-gradient-to-r from-purple-950/30 via-zinc-900/60 to-zinc-900/40 border border-purple-500/30 flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="p-2.5 bg-purple-500/20 text-purple-400 rounded-xl">
+                <Monitor className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h4 className="text-xs font-bold text-zinc-100 uppercase tracking-wider font-mono">
+                    Always-On-Top Mini Mode
+                  </h4>
+                  <span className="px-1.5 py-0.5 text-[9px] font-semibold bg-purple-500/20 text-purple-300 rounded border border-purple-500/30 uppercase">
+                    Windows
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  Pin Ahri to the corner as a 400×600 compact widget. Global hotkey: <kbd className="px-1.5 py-0.5 bg-zinc-800 rounded font-mono text-purple-300 text-[10px]">Ctrl+Shift+M</kbd>
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== 'undefined' && (window as any).electronAPI?.toggleMiniMode) {
+                  (window as any).electronAPI.toggleMiniMode();
+                } else {
+                  alert('Mini overlay mode hotkey is Ctrl+Shift+M in the Windows desktop app.');
+                }
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white flex items-center space-x-1.5 transition-all shadow-[0_0_15px_rgba(168,85,247,0.3)]"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Toggle Mini Mode</span>
+            </button>
+          </div>
         </div>
+
 
 
         {/* Modal Footer */}

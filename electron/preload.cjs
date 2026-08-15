@@ -6,7 +6,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
   toggleDevTools: () => ipcRenderer.send('toggle-devtools'),
+  toggleMiniMode: () => ipcRenderer.send('toggle-mini-mode'),
   onShortcut: (callback) => {
     ipcRenderer.on('hotkey-triggered', () => callback());
   }
 });
+

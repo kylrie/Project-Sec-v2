@@ -49,12 +49,33 @@ function startBackend() {
   });
 }
 
+function toggleMiniMode() {
+  if (!mainWindow) return;
+  if (mainWindow.isAlwaysOnTop()) {
+    mainWindow.setAlwaysOnTop(false);
+    mainWindow.setMinimumSize(900, 600);
+    mainWindow.setSize(1280, 800);
+    mainWindow.center();
+  } else {
+    const { screen } = require('electron');
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenWidth } = primaryDisplay.workAreaSize;
+
+    mainWindow.setMinimumSize(380, 500);
+    mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    mainWindow.setSize(400, 600);
+    mainWindow.setPosition(screenWidth - 420, 20);
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    minWidth: 900,
-    minHeight: 600,
+    minWidth: 380,
+    minHeight: 500,
     frame: true,
     backgroundColor: '#030712',
     icon: path.join(__dirname, '../public/icon-256.png'),
@@ -76,6 +97,11 @@ function createWindow() {
       mainWindow.show();
       mainWindow.focus();
     }
+  });
+
+  // Mini overlay mode (Ctrl+Shift+M)
+  globalShortcut.register('Ctrl+Shift+M', () => {
+    toggleMiniMode();
   });
 
   // Minimize to tray on close
@@ -105,6 +131,12 @@ function createTray() {
           mainWindow.show();
           mainWindow.focus();
         }
+      }
+    },
+    {
+      label: 'Toggle Mini Overlay Mode (Ctrl+Shift+M)',
+      click: () => {
+        toggleMiniMode();
       }
     },
     { type: 'separator' },
@@ -143,6 +175,8 @@ ipcMain.on('window-maximize', () => {
 });
 ipcMain.on('window-close', () => mainWindow?.close());
 ipcMain.on('toggle-devtools', () => mainWindow?.webContents.toggleDevTools());
+ipcMain.on('toggle-mini-mode', () => toggleMiniMode());
+
 
 app.whenReady().then(async () => {
   await startBackend();
