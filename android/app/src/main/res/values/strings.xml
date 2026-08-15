@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Project Ahri</string>
+    <string name="title_activity_main">Project Ahri</string>
+    <string name="package_name">com.project.ahri</string>
+    <string name="custom_url_scheme">com.project.ahri</string>
+</resources>
