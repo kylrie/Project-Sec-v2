@@ -1,4 +1,5 @@
 import "dotenv/config";
+import cors from "cors";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -16,6 +17,35 @@ import { userRouter } from "./src/server/routes/user.js";
 
 async function startServer() {
   const app = express();
+
+  // CORS: Allow Android app and Electron to hit the remote backend
+  const allowedOrigins = [
+    'capacitor://localhost',
+    'http://localhost',
+    'http://localhost:3000',
+    'https://localhost',
+    // Railway domain will be added dynamically via env var
+  ];
+
+  if (process.env.RAILWAY_STATIC_URL) {
+    allowedOrigins.push(process.env.RAILWAY_STATIC_URL);
+  }
+
+  app.use(cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, server-to-server)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin) || origin.endsWith('.up.railway.app')) {
+        return callback(null, true);
+      }
+      console.warn(`[CORS] Blocked origin: ${origin}`);
+      return callback(new Error('Not allowed by CORS'), false);
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-dev-user-id']
+  }));
+
   const PORT = Number(process.env.PORT) || 3000;
   
   // Initialize SQLite Database Tables & Seeds
