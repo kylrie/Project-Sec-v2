@@ -24,7 +24,21 @@ class WakeWordService {
   async start() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
+      console.error('[WakeWord] SpeechRecognition API not available in this environment');
       this.callbacks.onError('Speech recognition not supported in this browser');
+      return;
+    }
+
+    // FIX: Explicitly request microphone permission before starting speech recognition
+    // This triggers Electron's permission handler and warms up the audio pipeline
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Release the stream immediately — we just needed the permission grant
+      stream.getTracks().forEach(track => track.stop());
+      console.log('[WakeWord] Microphone permission granted');
+    } catch (micErr) {
+      console.error('[WakeWord] Microphone permission denied:', micErr);
+      this.callbacks.onError('Microphone access denied. Please allow microphone access for voice commands.');
       return;
     }
 

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, Tray, Menu, nativeImage, ipcMain } = require('electron');
+const { app, BrowserWindow, globalShortcut, Tray, Menu, nativeImage, ipcMain, session } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
@@ -82,7 +82,10 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.cjs')
+      preload: path.join(__dirname, 'preload.cjs'),
+      // FIX: Enable media stream (microphone) access for Web Speech API
+      webSecurity: true,
+      allowRunningInsecureContent: false
     }
   });
 
@@ -228,6 +231,24 @@ function startBackgroundWakeWord() {
 
 
 app.whenReady().then(async () => {
+  // FIX: Auto-grant microphone permissions for Web Speech API / wake word detection
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    const allowedPermissions = ['media', 'microphone', 'audioCapture', 'mediaKeySystem'];
+    if (allowedPermissions.includes(permission)) {
+      console.log(`[Electron] Auto-granted permission: ${permission}`);
+      callback(true);
+    } else {
+      console.log(`[Electron] Denied permission: ${permission}`);
+      callback(false);
+    }
+  });
+
+  // FIX: Also handle permission checks (some Chromium versions use this instead)
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+    const allowedPermissions = ['media', 'microphone', 'audioCapture', 'mediaKeySystem'];
+    return allowedPermissions.includes(permission);
+  });
+
   await startBackend();
   createWindow();
   createTray();
