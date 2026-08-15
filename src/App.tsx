@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Settings, 
@@ -12,17 +12,13 @@ import {
   Volume2, 
   Mic, 
   Terminal, 
-  Smartphone, 
-  Monitor, 
-  ChevronRight,
-  Maximize2,
-  CheckCircle2,
+  X,
+  ChevronUp,
+  Brain,
   Activity,
   PhoneCall,
-  Brain,
-  Store,
-  Compass,
-  Play
+  CheckCircle2,
+  Sliders
 } from 'lucide-react';
 
 import { HolographicCore } from './components/HolographicCore';
@@ -43,9 +39,8 @@ import { VoiceOnboardingWizard } from './components/VoiceOnboardingWizard';
 
 import { useVoiceEngine } from './hooks/useVoiceEngine';
 import { storageService } from './services/storage';
-import { googleWorkspaceService } from './services/googleWorkspace';
 import { soundSynth } from './services/audioEffects';
-import { ConversationTurn, VoiceSettings, ActiveTimer, ReminderItem, CalendarEvent, MessageItem, FridayPersonality } from './types/friday';
+import { ConversationTurn, VoiceSettings, ActiveTimer, ReminderItem, CalendarEvent, MessageItem } from './types/friday';
 
 export default function App() {
   const [settings, setSettings] = useState<VoiceSettings>(storageService.getSettings());
@@ -55,7 +50,9 @@ export default function App() {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(storageService.getCalendar());
   const [messages, setMessages] = useState<MessageItem[]>(storageService.getMessages());
 
-  const [activeView, setActiveView] = useState<'dashboard' | 'secretary' | 'sync' | 'communications' | 'workspace' | 'meeting' | 'distribution' | 'vault' | 'deliverables'>('secretary');
+  // Clean single-drawer hub state
+  const [isExecutiveDrawerOpen, setIsExecutiveDrawerOpen] = useState(false);
+  const [activeDrawerTab, setActiveDrawerTab] = useState<'briefing' | 'schedule' | 'comms' | 'meetings' | 'vault' | 'settings'>('briefing');
   const [isCommandOverlayOpen, setIsCommandOverlayOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
@@ -111,185 +108,116 @@ export default function App() {
       setLatestActionFeedback({ intent, text: `Current time: ${data.time}` });
     } else if (intent === 'get_weather') {
       setLatestActionFeedback({ intent, text: `Weather: ${data.tempF}°F, ${data.condition}` });
-    } else if (intent === 'start_meeting_recording' || intent === 'join_google_meet' || intent === 'flag_meeting_moment' || intent === 'end_meeting_generate_minutes' || intent === 'sync_meeting_tasks') {
-      setActiveView('meeting');
-      setLatestActionFeedback({ intent, text: `Meeting Intelligence: ${intent.replace(/_/g, ' ').toUpperCase()}` });
-    } else if (
-      intent === 'initiate_phone_call' ||
-      intent === 'answer_phone_call' ||
-      intent === 'decline_phone_call' ||
-      intent === 'send_to_voicemail' ||
-      intent === 'summarize_last_call' ||
-      intent === 'send_sms_voice' ||
-      intent === 'send_viber_voice' ||
-      intent === 'send_messenger_voice' ||
-      intent === 'summarize_messenger_group' ||
-      intent === 'read_otp_code' ||
-      intent === 'get_communication_digest' ||
-      intent === 'enable_dnd_meeting' ||
-      intent === 'enable_driving_mode' ||
-      intent === 'disable_dnd'
-    ) {
-      setActiveView('communications');
-      setLatestActionFeedback({
-        intent,
-        text: `Communication Manager: ${intent.replace(/_/g, ' ').toUpperCase()}`
-      });
+    } else if (intent.includes('meeting')) {
+      setActiveDrawerTab('meetings');
+      setIsExecutiveDrawerOpen(true);
+      setLatestActionFeedback({ intent, text: `Meeting Intelligence active` });
     }
+  };
 
-    setTimeout(() => {
-      setLatestActionFeedback(null);
-    }, 6000);
+  const handleBlockCalendar = (timeStr: string, reason: string) => {
+    const newEvent: CalendarEvent = {
+      id: 'focus-' + Date.now(),
+      title: `Focus Time: ${reason}`,
+      date: 'Today',
+      startTime: timeStr,
+      endTime: '6:00 PM',
+      type: 'briefing',
+      location: 'Quiet Work Room'
+    };
+    handleAddCalendarEvent(newEvent);
+    setLatestActionFeedback({ intent: 'schedule_event', text: `Reserved ${timeStr} for ${reason}` });
   };
 
   const {
     state,
     transcript,
-    audioLevel,
     frequencies,
+    audioLevel,
     lastLatencyMs,
     startManualListening,
     stopManualListening,
-    interrupt,
+    processCommand,
     speak,
-    processCommand
+    interrupt
   } = useVoiceEngine({
     settings,
     onTurnComplete: handleTurnComplete,
-    onLocalAction: handleLocalAction
+    onLocalAction: handleLocalAction,
   });
+
+  const handleCoreClick = () => {
+    if (state === 'speaking') {
+      interrupt();
+    } else if (state === 'listening') {
+      stopManualListening();
+    } else {
+      startManualListening();
+    }
+  };
 
   const handleSaveSettings = (newSettings: VoiceSettings) => {
     setSettings(newSettings);
     storageService.saveSettings(newSettings);
   };
 
-  const handleBlockCalendar = (title: string, start: string, durationMinutes: number) => {
-    const newEvt: CalendarEvent = {
-      id: 'cal-block-' + Date.now(),
-      title,
-      startTime: start,
-      endTime: '06:00 PM',
-      date: 'Today',
-      type: 'briefing',
-      location: 'Reserved Focus Block'
-    };
-    handleAddCalendarEvent(newEvt);
-  };
-
-  const handleSelectPersonality = (p: FridayPersonality) => {
-    const updated = { ...settings, personality: p };
-    handleSaveSettings(updated);
-  };
-
-  const handleCoreClick = () => {
-    if (state === 'listening') {
-      stopManualListening();
-    } else if (state === 'speaking') {
-      interrupt();
-    } else {
-      startManualListening();
-    }
-  };
-
   const handleDataPurged = () => {
-    setConversations([]);
-    setTimers([]);
+    setConversations(storageService.getConversations());
+    setTimers(storageService.getTimers());
     setReminders(storageService.getReminders());
     setCalendarEvents(storageService.getCalendar());
     setMessages(storageService.getMessages());
   };
 
+  const isSpeaking = state === 'speaking';
+  const isListening = state === 'listening';
+
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans flex flex-col relative overflow-x-hidden selection:bg-sky-500 selection:text-white">
-      {/* Dynamic Futuristic Ambient HUD Gradients */}
+    <div className="min-h-screen bg-[#050914] text-zinc-100 font-sans flex flex-col justify-between relative overflow-hidden selection:bg-sky-500 selection:text-white">
+      {/* Background Soft Glow Aura */}
       <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
-        <div className="absolute top-[-10%] left-[20%] w-[600px] h-[600px] bg-sky-900/15 blur-[140px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[10%] w-[500px] h-[500px] bg-cyan-900/10 blur-[130px] rounded-full" />
-        <div className="absolute top-[40%] right-[-10%] w-[400px] h-[400px] bg-purple-900/10 blur-[150px] rounded-full" />
-        {/* Subtle grid pattern */}
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b0a_1px,transparent_1px),linear-gradient(to_bottom,#1e293b0a_1px,transparent_1px)] bg-[size:4rem_4rem]" />
+        <div className="absolute top-[20%] left-[50%] translate-x-[-50%] translate-y-[-50%] w-[800px] h-[800px] bg-sky-950/20 blur-[160px] rounded-full pointer-events-none" />
       </div>
 
-      {/* Top Navigation & Status Bar */}
-      <header className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-zinc-800/80 z-20">
-        {/* Logo & Brand Identity */}
+      {/* 1. ULTRA-MINIMAL TOP BAR */}
+      <header className="w-full max-w-5xl mx-auto px-6 py-6 flex items-center justify-between z-20">
+        {/* Left: Sleek Brand Logo */}
         <div className="flex items-center space-x-3">
-          <div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500/20 to-sky-950 border border-sky-400/40 shadow-[0_0_15px_rgba(56,189,248,0.25)]">
-            <span className="font-mono text-sky-400 font-black text-base">F</span>
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full animate-ping" />
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full" />
+          <div className="flex items-center space-x-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <h1 className="text-sm font-semibold tracking-[0.25em] text-zinc-100 uppercase font-mono">
+              FRIDAY
+            </h1>
           </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <h1 className="text-sm font-bold tracking-widest text-zinc-100 uppercase font-mono">
-                FRIDAY OS
-              </h1>
-              <span className="px-1.5 py-0.2 rounded bg-sky-950 border border-sky-800 text-sky-400 text-[10px] font-mono font-medium">
-                v2.6 Executive
-              </span>
-            </div>
-            <p className="text-[11px] text-zinc-400 font-mono flex items-center space-x-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span>Secretary Brain Online • E2EE Mesh Synced</span>
-            </p>
-          </div>
+          <span className="text-[10px] font-mono text-zinc-500 tracking-wider">
+            AI EXECUTIVE
+          </span>
         </div>
 
-        {/* Action Controls & Navigation Pills */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* 5-Min Voice Setup Wizard Button */}
+        {/* Right: Single Compact Hub Toggle */}
+        <div className="flex items-center space-x-3">
           <button
-            id="btn-voice-onboarding"
-            onClick={() => setIsOnboardingOpen(true)}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500/20 to-blue-600/20 hover:from-cyan-500/30 hover:to-blue-600/30 border border-cyan-500/40 text-xs text-cyan-300 font-mono transition-all cursor-pointer shadow-sm"
-            title="Launch 5-Minute Voice-Guided Setup Wizard"
+            onClick={() => setIsExecutiveDrawerOpen(true)}
+            className="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-zinc-900/60 hover:bg-zinc-800/80 border border-zinc-800 text-xs font-mono text-zinc-300 transition-all cursor-pointer shadow-sm hover:border-sky-500/40"
           >
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-            <span>Voice Setup Wizard</span>
+            <Sliders className="w-3.5 h-3.5 text-sky-400" />
+            <span>Executive Hub</span>
           </button>
 
-          {/* Quick Overlay Summon Button */}
-          <button
-            onClick={() => setIsCommandOverlayOpen(true)}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 font-mono transition-all hover:border-sky-500/50 cursor-pointer"
-            title="Summon Quick Launcher (Cmd/Ctrl+Shift+Space)"
-          >
-            <Terminal className="w-3.5 h-3.5 text-sky-400" />
-            <span className="hidden md:inline">Command HUD</span>
-            <kbd className="px-1.5 py-0.2 rounded bg-zinc-950 text-[10px] text-zinc-400 border border-zinc-800">
-              ⌘+Shift+Space
-            </kbd>
-          </button>
-
-          {/* Privacy Vault Button */}
-          <button
-            onClick={() => setActiveView('vault')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-mono transition-all cursor-pointer ${
-              activeView === 'vault'
-                ? 'bg-emerald-950/60 border-emerald-500 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
-                : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300'
-            }`}
-          >
-            <Shield className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Privacy Vault</span>
-          </button>
-
-          {/* Settings Button */}
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-            title="Configure Wake Word & Voice"
+            className="p-2 rounded-full bg-zinc-900/60 hover:bg-zinc-800/80 border border-zinc-800 text-zinc-400 hover:text-white transition-all cursor-pointer"
+            title="Settings"
           >
             <Settings className="w-4 h-4" />
           </button>
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-2 flex flex-col items-center z-10">
-        {/* Clean Holographic Atom HUD Center */}
-        <section className="w-full flex flex-col items-center justify-center">
+      {/* 2. THE HEART: UNCLIPPED EXPANSIVE 3D STARDUST ORB */}
+      <main className="flex-1 w-full max-w-4xl mx-auto px-4 flex flex-col items-center justify-center z-10 my-auto">
+        {/* 3D Quantum Orb Component */}
+        <div className="w-full flex justify-center items-center">
           <HolographicCore
             state={state}
             frequencies={frequencies}
@@ -299,173 +227,198 @@ export default function App() {
             onCoreClick={handleCoreClick}
             onInterrupt={interrupt}
           />
-
-          {/* Live Dynamic Speech Captions (Only shown when active or providing feedback) */}
-          <div className="min-h-[44px] w-full max-w-2xl mx-auto flex flex-col items-center justify-center px-4 text-center my-1">
-            <AnimatePresence mode="wait">
-              {state === 'listening' && (
-                <motion.div
-                  key="listening"
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  className="flex items-center space-x-2 text-cyan-400"
-                >
-                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                  <p className="text-lg sm:text-xl font-light text-zinc-100 italic tracking-wide">
-                    "{transcript || 'Listening for your command...'}"
-                  </p>
-                </motion.div>
-              )}
-
-              {state === 'speaking' && conversations.length > 0 && (
-                <motion.p
-                  key="speaking"
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  className="text-base sm:text-lg font-normal text-zinc-100 leading-relaxed drop-shadow-sm max-w-xl"
-                >
-                  {conversations[conversations.length - 1].role === 'friday'
-                    ? conversations[conversations.length - 1].text
-                    : ''}
-                </motion.p>
-              )}
-
-              {latestActionFeedback && (
-                <motion.div
-                  key="feedback"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="inline-flex items-center space-x-2 px-3 py-1 rounded-xl bg-cyan-950/80 border border-cyan-500/40 text-xs font-mono text-cyan-200 shadow-[0_0_15px_rgba(6,182,212,0.25)]"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>{latestActionFeedback.text}</span>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </section>
-
-        {/* Clean Streamlined Navigation Tabs */}
-        <div className="w-full max-w-4xl flex items-center justify-center border-b border-zinc-800/80 pb-2 mb-5">
-          <div className="flex items-center justify-center flex-wrap gap-1 p-1 bg-zinc-900/60 rounded-2xl border border-zinc-800/80 backdrop-blur-md">
-            {[
-              { id: 'secretary', label: 'Secretary Brain', icon: Brain },
-              { id: 'dashboard', label: 'Operations', icon: Activity },
-              { id: 'communications', label: 'Telephony & Chat', icon: PhoneCall },
-              { id: 'workspace', label: 'Workspace', icon: Sparkles },
-              { id: 'meeting', label: 'Meetings', icon: Users },
-              { id: 'sync', label: 'Mesh Sync', icon: Radio },
-              { id: 'distribution', label: 'Store Releases', icon: Store },
-              { id: 'deliverables', label: 'Architecture', icon: Layers },
-            ].map(tab => {
-              const Icon = tab.icon;
-              const isActive = activeView === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveView(tab.id as any)}
-                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-mono transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/20'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
         </div>
 
-        {/* Dynamic Main Viewport */}
-        <section className="w-full max-w-5xl">
-          {activeView === 'secretary' && (
-            <SecretaryBrainHub
-              onSpeak={speak}
-              onBlockCalendar={handleBlockCalendar}
-              onOpenMessageThread={() => setActiveView('communications')}
-              soundSynth={soundSynth}
-            />
-          )}
+        {/* Dynamic Live Speech Captions */}
+        <div className="min-h-[56px] w-full max-w-xl mx-auto flex flex-col items-center justify-center px-4 text-center my-3">
+          <AnimatePresence mode="wait">
+            {isListening && (
+              <motion.div
+                key="listening"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                className="flex items-center space-x-2 text-cyan-300"
+              >
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                <p className="text-lg sm:text-xl font-light text-zinc-100 italic tracking-wide">
+                  "{transcript || 'Listening to you...'}"
+                </p>
+              </motion.div>
+            )}
 
-          {activeView === 'sync' && (
-            <CrossDeviceSyncCenter
-              soundSynth={soundSynth}
-              onSpeak={speak}
-            />
-          )}
+            {isSpeaking && conversations.length > 0 && (
+              <motion.p
+                key="speaking"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                className="text-base sm:text-lg font-light text-zinc-200 leading-relaxed max-w-lg drop-shadow-sm"
+              >
+                {conversations[conversations.length - 1].role === 'friday'
+                  ? conversations[conversations.length - 1].text
+                  : ''}
+              </motion.p>
+            )}
 
-          {activeView === 'dashboard' && (
-            <div className="space-y-6">
-              {/* Row 1: Timers and Action Items */}
-              <TimersAndTasks
-                timers={timers}
-                reminders={reminders}
-                onUpdateTimers={handleUpdateTimers}
-                onUpdateReminders={handleUpdateReminders}
-              />
+            {latestActionFeedback && !isListening && !isSpeaking && (
+              <motion.div
+                key="feedback"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-500/30 text-xs font-mono text-cyan-300"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
+                <span>{latestActionFeedback.text}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
-              {/* Row 2: Schedule & Communications */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <ExecutiveSchedule
-                  events={calendarEvents}
-                  onAddEvent={handleAddCalendarEvent}
-                  onDeleteEvent={handleDeleteCalendarEvent}
-                />
-                <CommunicationsTriage
-                  messages={messages}
-                  onUpdateMessages={handleUpdateMessages}
-                  onSpeakReply={speak}
-                  onOpenFullHub={() => setActiveView('communications')}
-                />
-              </div>
-            </div>
-          )}
+        {/* 3. ONE UNIFIED BUTTON FOR EVERYTHING */}
+        <div className="flex flex-col items-center justify-center mt-2 mb-8">
+          <button
+            id="btn-unified-voice-action"
+            onClick={isSpeaking ? interrupt : handleCoreClick}
+            className={`group relative flex items-center space-x-3 px-8 py-4 rounded-full font-mono text-sm tracking-wider uppercase transition-all duration-300 cursor-pointer shadow-2xl ${
+              isSpeaking
+                ? 'bg-emerald-500/25 hover:bg-emerald-500/35 border border-emerald-400/60 text-emerald-200 shadow-[0_0_35px_rgba(16,185,129,0.35)] animate-pulse'
+                : isListening
+                ? 'bg-cyan-500/25 hover:bg-cyan-500/35 border border-cyan-400/60 text-cyan-200 shadow-[0_0_35px_rgba(6,182,212,0.35)] animate-pulse'
+                : 'bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-700/60 hover:border-sky-400/60 text-zinc-100 shadow-[0_0_25px_rgba(0,0,0,0.5)]'
+            }`}
+          >
+            {/* Pulsing indicator ring */}
+            <span className={`w-3 h-3 rounded-full ${isSpeaking ? 'bg-emerald-400 animate-ping' : isListening ? 'bg-cyan-400 animate-ping' : 'bg-sky-400'}`} />
+            
+            <span className="font-semibold tracking-[0.2em]">
+              {isSpeaking ? 'FRIDAY Speaking (Stop)' : isListening ? 'Listening...' : 'Talk with Friday'}
+            </span>
 
-          {activeView === 'communications' && (
-            <UnifiedCommunicationsHub
-              messages={messages}
-              onUpdateMessages={handleUpdateMessages}
-              onSpeak={speak}
-            />
-          )}
+            <Mic className={`w-4 h-4 ${isSpeaking ? 'text-emerald-300 animate-pulse' : isListening ? 'text-cyan-300 animate-bounce' : 'text-zinc-400 group-hover:text-sky-400'} transition-colors`} />
+          </button>
 
-          {activeView === 'workspace' && (
-            <GoogleWorkspaceHub
-              onSpeak={speak}
-              onVoiceCommandTrigger={processCommand}
-            />
-          )}
-
-          {activeView === 'meeting' && (
-            <LiveMeetingRecorder onSpeakSummary={speak} />
-          )}
-
-          {activeView === 'distribution' && (
-            <AppStoreAndDistributionPortal
-              soundSynth={soundSynth}
-              onSpeak={speak}
-            />
-          )}
-
-          {activeView === 'vault' && (
-            <PrivacyVault
-              conversations={conversations}
-              onDataPurged={handleDataPurged}
-            />
-          )}
-
-          {activeView === 'deliverables' && (
-            <CrossPlatformDeliverables />
-          )}
-        </section>
+          <p className="mt-3 text-[11px] font-mono text-zinc-500 tracking-wider">
+            Press to talk • or say <span className="text-zinc-300">"{settings.wakeWord}"</span>
+          </p>
+        </div>
       </main>
 
-      {/* Global Command HUD Spotlight Overlay */}
+      {/* 4. CLEAN EXECUTIVE DRAWER (ALL FEATURES IN ONE EXPANDABLE HUB) */}
+      <AnimatePresence>
+        {isExecutiveDrawerOpen && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6 bg-black/75 backdrop-blur-xl">
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              className="w-full max-w-4xl max-h-[85vh] bg-zinc-950 border border-zinc-800 sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col overflow-hidden"
+            >
+              {/* Drawer Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/80 bg-zinc-900/40">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 rounded-xl bg-sky-500/20 border border-sky-500/40 flex items-center justify-center">
+                    <Brain className="w-4 h-4 text-sky-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold font-mono tracking-wider text-zinc-100 uppercase">
+                      Executive Intelligence Hub
+                    </h2>
+                    <p className="text-[11px] text-zinc-400 font-mono">
+                      Integrated briefing, tasks, meetings & vault
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setIsExecutiveDrawerOpen(false)}
+                  className="p-2 rounded-full bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Drawer Segmented Navigation */}
+              <div className="flex items-center space-x-2 px-6 py-3 border-b border-zinc-800/60 bg-zinc-900/20 overflow-x-auto">
+                {[
+                  { id: 'briefing', label: 'Briefing', icon: Brain },
+                  { id: 'schedule', label: 'Schedule & Tasks', icon: Calendar },
+                  { id: 'comms', label: 'Communications', icon: PhoneCall },
+                  { id: 'meetings', label: 'Meeting Recorder', icon: Users },
+                  { id: 'vault', label: 'Privacy Vault', icon: Shield },
+                ].map(tab => {
+                  const Icon = tab.icon;
+                  const isActive = activeDrawerTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveDrawerTab(tab.id as any)}
+                      className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-mono transition-all cursor-pointer shrink-0 ${
+                        isActive
+                          ? 'bg-sky-500 text-zinc-950 font-bold shadow-md shadow-sky-500/20'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Drawer Scrollable Content */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {activeDrawerTab === 'briefing' && (
+                  <SecretaryBrainHub
+                    onSpeak={speak}
+                    onBlockCalendar={handleBlockCalendar}
+                    onOpenMessageThread={() => setActiveDrawerTab('comms')}
+                    soundSynth={soundSynth}
+                  />
+                )}
+
+                {activeDrawerTab === 'schedule' && (
+                  <div className="space-y-6">
+                    <TimersAndTasks
+                      timers={timers}
+                      reminders={reminders}
+                      onUpdateTimers={handleUpdateTimers}
+                      onUpdateReminders={handleUpdateReminders}
+                    />
+                    <ExecutiveSchedule
+                      events={calendarEvents}
+                      onAddEvent={handleAddCalendarEvent}
+                      onDeleteEvent={handleDeleteCalendarEvent}
+                    />
+                  </div>
+                )}
+
+                {activeDrawerTab === 'comms' && (
+                  <UnifiedCommunicationsHub
+                    messages={messages}
+                    onUpdateMessages={handleUpdateMessages}
+                    onSpeak={speak}
+                  />
+                )}
+
+                {activeDrawerTab === 'meetings' && (
+                  <LiveMeetingRecorder onSpeakSummary={speak} />
+                )}
+
+                {activeDrawerTab === 'vault' && (
+                  <PrivacyVault
+                    conversations={conversations}
+                    onDataPurged={handleDataPurged}
+                  />
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Global Command Overlay */}
       <CommandOverlay
         isOpen={isCommandOverlayOpen}
         onClose={() => setIsCommandOverlayOpen(false)}
@@ -475,33 +428,37 @@ export default function App() {
         wakeWord={settings.wakeWord}
       />
 
-      {/* Settings & Voice Tuning Modal */}
+      {/* Settings Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         onSaveSettings={handleSaveSettings}
-        onTestVoice={speak}
+        onLaunchWizard={() => {
+          setIsSettingsOpen(false);
+          setIsOnboardingOpen(true);
+        }}
       />
 
-      {/* 5-Minute Voice Onboarding Modal Overlay */}
+      {/* 5-Min Voice Setup Wizard Modal */}
       {isOnboardingOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
-          <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl">
+          <div className="w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-3xl p-6 relative shadow-2xl">
+            <button
+              onClick={() => setIsOnboardingOpen(false)}
+              className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-white rounded-full bg-zinc-900 hover:bg-zinc-800 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
             <VoiceOnboardingWizard
               onComplete={() => setIsOnboardingOpen(false)}
               onSpeak={speak}
-              onSelectPersonality={handleSelectPersonality}
+              onSelectPersonality={(p) => handleSaveSettings({ ...settings, personality: p })}
               soundSynth={soundSynth}
             />
           </div>
         </div>
       )}
-
-      {/* Footer Info */}
-      <footer className="w-full border-t border-zinc-900 py-4 px-6 text-center text-xs text-zinc-600 font-mono">
-        <p>FRIDAY Assistant • Cross-Platform Autonomous Executive Interface • Local-First Architecture</p>
-      </footer>
     </div>
   );
 }

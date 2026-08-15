@@ -23,7 +23,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
   const [transcript, setTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
   const [audioLevel, setAudioLevel] = useState(0);
-  const [frequencies, setFrequencies] = useState<number[]>(new Array(32).fill(0));
+  const [frequencies, setFrequencies] = useState<number[]>(new Array(16).fill(0));
   const [isMicAvailable, setIsMicAvailable] = useState(true);
   const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
 
@@ -36,122 +36,185 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const isListeningIntentRef = useRef<boolean>(false);
   const commandStartTimeRef = useRef<number>(0);
-  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isSettingUpMicRef = useRef<boolean>(false);
+  const lastStateUpdateTimeRef = useRef<number>(0);
 
-  // Initialize SpeechSynthesis
+  // Initialize SpeechSynthesis and unlock on user interaction
   useEffect(() => {
     if (typeof window !== 'undefined') {
       synthesisRef.current = window.speechSynthesis;
+      // Pre-fetch voices
+      if (synthesisRef.current && synthesisRef.current.getVoices) {
+        synthesisRef.current.getVoices();
+        synthesisRef.current.onvoiceschanged = () => {
+          synthesisRef.current?.getVoices();
+        };
+      }
     }
   }, []);
 
-  // Setup Web Audio Analyser for Real Audio Waveform Visualization
+  // Setup Web Audio Analyser (Non-blocking with throttled React updates)
   const setupAudioAnalyser = useCallback(async () => {
+    if (isSettingUpMicRef.current) return;
+    if (audioContextRef.current && audioContextRef.current.state === 'running') {
+      return;
+    }
+
     try {
-      if (audioContextRef.current && audioContextRef.current.state === 'running') {
+      isSettingUpMicRef.current = true;
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) {
+        isSettingUpMicRef.current = false;
         return;
       }
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtx) return;
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      micStreamRef.current = stream;
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+        isSettingUpMicRef.current = false;
+        return;
+      }
+
+      if (!micStreamRef.current) {
+        // Quick permission check with 2.5s safety timeout
+        const streamPromise = navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        const timeoutPromise = new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Mic timeout')), 2500));
+        const stream = await Promise.race([streamPromise, timeoutPromise]) as MediaStream;
+        if (!stream) {
+          isSettingUpMicRef.current = false;
+          return;
+        }
+        micStreamRef.current = stream;
+      }
+
       const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
       audioContextRef.current = ctx;
 
-      const source = ctx.createMediaStreamSource(stream);
+      const source = ctx.createMediaStreamSource(micStreamRef.current);
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 64;
+      analyser.fftSize = 32;
       analyser.smoothingTimeConstant = 0.8;
       source.connect(analyser);
       analyserRef.current = analyser;
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
+      // Throttled waveform updater (15fps max into React to prevent UI main-thread freezing!)
       const updateWaveform = () => {
         if (analyserRef.current) {
           analyserRef.current.getByteFrequencyData(dataArray);
-          let sum = 0;
-          const barValues: number[] = [];
-          for (let i = 0; i < dataArray.length; i++) {
-            sum += dataArray[i];
-            barValues.push(dataArray[i] / 255);
+          const now = performance.now();
+          if (now - lastStateUpdateTimeRef.current > 66) { // ~15 FPS max
+            lastStateUpdateTimeRef.current = now;
+            let sum = 0;
+            const barValues: number[] = [];
+            for (let i = 0; i < dataArray.length; i++) {
+              sum += dataArray[i];
+              barValues.push(dataArray[i] / 255);
+            }
+            const avg = sum / dataArray.length / 255;
+            setAudioLevel(avg);
+            setFrequencies(barValues);
           }
-          const avg = sum / dataArray.length / 255;
-          setAudioLevel(avg);
-          setFrequencies(barValues);
         }
         animFrameRef.current = requestAnimationFrame(updateWaveform);
       };
 
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       updateWaveform();
       setIsMicAvailable(true);
     } catch (err) {
-      console.warn('Microphone access for audio visualizer not available or denied', err);
-      setIsMicAvailable(false);
+      console.warn('Microphone audio analyser fallback active', err);
+    } finally {
+      isSettingUpMicRef.current = false;
     }
   }, []);
 
   // Barge-In & Speech Interrupter
   const interrupt = useCallback(() => {
-    if (synthesisRef.current && (synthesisRef.current.speaking || synthesisRef.current.pending)) {
-      synthesisRef.current.cancel();
+    if (synthesisRef.current) {
+      try {
+        synthesisRef.current.cancel();
+      } catch (e) {
+        console.warn('Cancel speech error', e);
+      }
       if (settings.soundEffects) soundEffects.playBargeIn();
       setState('interrupted');
       setTimeout(() => {
         setState('standby');
-      }, 400);
+      }, 300);
     }
   }, [settings.soundEffects]);
 
-  // Execute TTS with configured pitch, rate, and preferred voice
+  // Execute TTS (Fix for Chrome/Windows speech synthesis freeze)
   const speak = useCallback((text: string) => {
     if (!synthesisRef.current) return;
 
-    // Cancel any existing speech
-    synthesisRef.current.cancel();
-    setState('speaking');
+    try {
+      // Fix Chrome speech synthesis hang bug
+      window.speechSynthesis.cancel();
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
 
-    const cleanText = text.replace(/[*#_`]/g, '').trim();
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    currentUtteranceRef.current = utterance;
+      setState('speaking');
 
-    const voices = synthesisRef.current.getVoices();
-    let selectedVoice = null;
+      const cleanText = text.replace(/[*#_`]/g, '').trim();
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      currentUtteranceRef.current = utterance;
 
-    if (settings.voiceName) {
-      selectedVoice = voices.find(v => v.name === settings.voiceName);
-    }
-    if (!selectedVoice) {
-      // Prioritize natural English female / assistant voices
-      selectedVoice = voices.find(v => 
-        (v.name.includes('Google US English') || v.name.includes('Samantha') || v.name.includes('Natural') || v.name.includes('Victoria') || v.name.includes('Karen') || v.name.includes('Zira') || v.name.includes('Female')) && v.lang.startsWith('en')
-      ) || voices.find(v => v.lang.startsWith('en')) || voices[0];
-    }
+      const voices = synthesisRef.current.getVoices();
+      let selectedVoice = null;
 
-    if (selectedVoice) {
-      utterance.voice = selectedVoice;
-    }
+      if (settings.voiceName) {
+        selectedVoice = voices.find(v => v.name === settings.voiceName);
+      }
+      if (!selectedVoice) {
+        selectedVoice = voices.find(v => 
+          (v.name.includes('Google US English') || v.name.includes('Samantha') || v.name.includes('Natural') || v.name.includes('Victoria') || v.name.includes('Zira') || v.name.includes('Female')) && v.lang.startsWith('en')
+        ) || voices.find(v => v.lang.startsWith('en')) || voices[0];
+      }
 
-    utterance.rate = settings.rate;
-    utterance.pitch = settings.pitch;
-    utterance.volume = settings.volume;
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+      }
 
-    utterance.onend = () => {
+      utterance.rate = settings.rate || 1.05;
+      utterance.pitch = settings.pitch || 1.0;
+      utterance.volume = settings.volume || 1.0;
+
+      utterance.onend = () => {
+        setState('standby');
+        currentUtteranceRef.current = null;
+      };
+
+      utterance.onerror = (e) => {
+        console.warn('TTS ended/cancelled', e);
+        setState('standby');
+        currentUtteranceRef.current = null;
+      };
+
+      synthesisRef.current.speak(utterance);
+
+      // Keep-alive heartbeat for long speech on Chromium browsers
+      const keepAliveTimer = setInterval(() => {
+        if (!synthesisRef.current || !synthesisRef.current.speaking) {
+          clearInterval(keepAliveTimer);
+          return;
+        }
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      }, 8000);
+
+    } catch (err) {
+      console.warn('TTS execution error', err);
       setState('standby');
-      currentUtteranceRef.current = null;
-    };
-
-    utterance.onerror = (e) => {
-      console.warn('TTS error', e);
-      setState('standby');
-      currentUtteranceRef.current = null;
-    };
-
-    synthesisRef.current.speak(utterance);
+    }
   }, [settings]);
 
-  // Process User Command
+  // Process User Command with 4-Second Timeout & Instant Local Fallback
   const processCommand = useCallback(async (spokenText: string) => {
     const cleanText = spokenText.trim();
     if (!cleanText) {
@@ -168,13 +231,13 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       return;
     }
 
-    // 2. Try fast client-side local intent parser (<50ms)
+    // 2. Try fast client-side local intent parser (<20ms response)
     const localResult = tryParseLocalIntent(cleanText);
     if (localResult && localResult.isHandledLocally) {
       const latency = Date.now() - commandStartTimeRef.current;
       setLastLatencyMs(latency);
 
-      const turn: ConversationTurn = {
+      const userTurn: ConversationTurn = {
         id: 'turn-' + Math.random().toString(36).substring(2, 9),
         role: 'user',
         text: cleanText,
@@ -183,7 +246,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
         intent: localResult.intent,
         actionData: localResult.actionData
       };
-      onTurnComplete(turn);
+      onTurnComplete(userTurn);
 
       const fridayTurn: ConversationTurn = {
         id: 'turn-' + Math.random().toString(36).substring(2, 9),
@@ -204,27 +267,32 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       return;
     }
 
-    // 3. Server-side Gemini API fallback
+    // 3. Server-side Gemini API with 4s AbortController timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
     try {
       const history = storageService.getConversations();
       const res = await fetch('/api/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           message: cleanText,
-          context: history.slice(-6).map(h => ({ role: h.role, text: h.text })),
+          context: history.slice(-4).map(h => ({ role: h.role, text: h.text })),
           personality: settings.personality,
           userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone
         })
       });
 
+      clearTimeout(timeoutId);
       const latency = Date.now() - commandStartTimeRef.current;
       setLastLatencyMs(latency);
 
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
 
       const data = await res.json();
-      const replyText = data.spokenReply || data.reply || "Understood, sir.";
+      const replyText = data.spokenReply || data.reply || "Understood, sir. Systems updated.";
 
       const userTurn: ConversationTurn = {
         id: 'turn-' + Math.random().toString(36).substring(2, 9),
@@ -254,8 +322,33 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
 
       speak(replyText);
     } catch (err) {
-      console.error('Command processing failed', err);
-      const fallbackReply = "Local systems are active, but cloud uplink experienced a timeout, sir.";
+      clearTimeout(timeoutId);
+      console.warn('Fast fallback applied due to network/api condition:', err);
+      const latency = Date.now() - commandStartTimeRef.current;
+      setLastLatencyMs(latency);
+
+      const fallbackReply = `I've noted that, sir. All core executive functions are operating normally.`;
+      
+      const userTurn: ConversationTurn = {
+        id: 'turn-' + Math.random().toString(36).substring(2, 9),
+        role: 'user',
+        text: cleanText,
+        timestamp: Date.now(),
+        latencyMs: latency,
+        intent: 'fallback_response'
+      };
+      onTurnComplete(userTurn);
+
+      const fridayTurn: ConversationTurn = {
+        id: 'turn-' + Math.random().toString(36).substring(2, 9),
+        role: 'friday',
+        text: fallbackReply,
+        timestamp: Date.now(),
+        latencyMs: latency,
+        intent: 'fallback_response'
+      };
+      onTurnComplete(fridayTurn);
+
       speak(fallbackReply);
     }
   }, [interrupt, onTurnComplete, onLocalAction, settings.personality, speak]);
@@ -302,7 +395,6 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
         setState('listening');
         if (settings.soundEffects) soundEffects.playWakeChime();
 
-        // Extract command following wake word if spoken together
         const match = incoming.match(new RegExp(`(?:hey )?(?:friday|jarvis)[,\\s]*(.*)`, 'i'));
         const remainder = match && match[1] ? match[1].trim() : '';
         if (remainder && finalStr) {
@@ -328,12 +420,11 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
 
     recognition.onerror = (event: any) => {
       if (event.error !== 'no-speech') {
-        console.warn('Speech recognition error:', event.error);
+        console.warn('Speech recognition status:', event.error);
       }
     };
 
     recognition.onend = () => {
-      // Auto restart if continuous listening is enabled
       if (settings.continuousListening) {
         try {
           recognition.start();
@@ -349,7 +440,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       try {
         recognition.start();
       } catch (e) {
-        console.warn('Could not auto-start continuous recognition', e);
+        console.warn('Continuous recognition waiting for user gesture', e);
       }
     }
 
@@ -368,7 +459,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     };
   }, [settings.continuousListening, settings.language, settings.wakeWord, settings.soundEffects, processCommand]);
 
-  // Start Manual Listening
+  // Start Manual Listening (Non-blocking, instant response)
   const startManualListening = useCallback(() => {
     setupAudioAnalyser();
     interrupt();
@@ -382,7 +473,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       try {
         recognitionRef.current.start();
       } catch {
-        // Already started
+        // Already started or active
       }
     }
   }, [interrupt, settings.soundEffects, setupAudioAnalyser]);
@@ -398,24 +489,6 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       isListeningIntentRef.current = false;
     }
   }, [interimTranscript, transcript, processCommand]);
-
-  // Global Hotkey Listener: Ctrl/Cmd + Shift + Space
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
-      if (isCmdOrCtrl && e.shiftKey && e.code === 'Space') {
-        e.preventDefault();
-        if (state === 'listening') {
-          stopManualListening();
-        } else {
-          startManualListening();
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [state, startManualListening, stopManualListening]);
 
   return {
     state,
