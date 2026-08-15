@@ -4,6 +4,15 @@ import { parseActionIntent, ActionIntent } from '../services/actionBroker.js';
 
 const router = Router();
 
+export interface ActionResult {
+  success: boolean;
+  method: string;
+  link: string | null;
+  spokenConfirmation: string;
+  requiresManualCompletion: boolean;
+  error?: string;
+}
+
 // Step 1: Parse intent
 router.post('/parse', authMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
@@ -27,8 +36,13 @@ router.post('/execute', authMiddleware, async (req: AuthenticatedRequest, res) =
       return res.status(400).json({ error: 'intent is required' });
     }
     
-    const result = await executeAction(intent);
-    res.json({ success: result.success, details: result, link: result.link, spokenConfirmation: result.spokenConfirmation });
+    const result: ActionResult = await executeAction(intent);
+    res.json({
+      success: result.success,
+      details: result,
+      link: result.link,
+      spokenConfirmation: result.spokenConfirmation
+    });
   } catch (err: any) {
     console.error('[ActionRouter] Execute exception:', err);
     res.status(500).json({ error: err.message || 'Failed to execute action' });
@@ -37,7 +51,7 @@ router.post('/execute', authMiddleware, async (req: AuthenticatedRequest, res) =
 
 export { router as actionRouter };
 
-async function executeAction(intent: any) {
+async function executeAction(intent: any): Promise<ActionResult> {
   switch (intent.category) {
     case 'food':
       return await executeFoodOrder(intent);
@@ -51,13 +65,14 @@ async function executeAction(intent: any) {
       return {
         success: true,
         method: 'generic',
+        link: null,
         spokenConfirmation: `Action acknowledged for ${intent.action || 'request'}.`,
         requiresManualCompletion: false
       };
   }
 }
 
-async function executeFoodOrder(intent: any) {
+async function executeFoodOrder(intent: any): Promise<ActionResult> {
   const itemName = intent.items && intent.items[0] ? intent.items[0].name : 'order';
   const deepLinks: Record<string, (i: any) => string> = {
     dominos: (i: any) => `https://www.dominos.com/en/pages/order/#/product/S_PIZZA/builder/?code=${encodeURIComponent(i.items?.[0]?.name || 'PIZZA')}`,
@@ -77,7 +92,7 @@ async function executeFoodOrder(intent: any) {
   };
 }
 
-async function executeTransportBooking(intent: any) {
+async function executeTransportBooking(intent: any): Promise<ActionResult> {
   const links: Record<string, string> = {
     grab: `grab://open?screen=bookRide`,
     uber: `uber://?action=setPickup`,
@@ -95,7 +110,7 @@ async function executeTransportBooking(intent: any) {
   };
 }
 
-async function executePayment(intent: any) {
+async function executePayment(intent: any): Promise<ActionResult> {
   const links: Record<string, (i: any) => string> = {
     gcash: (i: any) => `gcash://send?amount=${i.amount || 0}&recipient=${encodeURIComponent(i.recipient || '')}`,
     maya: (i: any) => `maya://send?amount=${i.amount || 0}&to=${encodeURIComponent(i.recipient || '')}`
@@ -113,7 +128,7 @@ async function executePayment(intent: any) {
   };
 }
 
-async function executeShopping(intent: any) {
+async function executeShopping(intent: any): Promise<ActionResult> {
   const link = `https://www.google.com/search?q=${encodeURIComponent(intent.items?.[0]?.name || 'shopping')}`;
   return {
     success: true,
