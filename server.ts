@@ -20,7 +20,9 @@ import { deviceRouter } from "./src/server/routes/devices.js";
 import { proactiveRouter } from "./src/server/routes/proactive.js";
 import { suggestionRouter } from "./src/server/routes/suggestions.js";
 import { actionRouter } from "./src/server/routes/actions.js";
+import { smartHomeRouter } from "./src/server/routes/smartHome.js";
 import { registerDeviceWs, unregisterDeviceWs } from "./src/server/services/meshService.js";
+
 
 
 
@@ -128,6 +130,8 @@ async function startServer() {
   app.use("/api/proactive", proactiveRouter);
   app.use("/api/suggestions", suggestionRouter);
   app.use("/api/actions", actionRouter);
+  app.use("/api/smarthome", smartHomeRouter);
+
 
 
 
