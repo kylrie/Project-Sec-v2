@@ -151,7 +151,7 @@ export const VoiceOnboardingWizard: React.FC<VoiceOnboardingWizardProps> = ({
                 className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-sm shadow-lg shadow-emerald-500/25 flex items-center gap-2 mx-auto cursor-pointer"
               >
                 <UserCheck className="w-4 h-4" />
-                {workspaceGranted ? 'Workspace Connected (Tony Stark)' : 'Authorize Google Workspace'}
+                {workspaceGranted ? 'Workspace Connected (Executive User)' : 'Authorize Google Workspace'}
               </button>
             </div>
 

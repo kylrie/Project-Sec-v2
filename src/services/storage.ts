@@ -116,16 +116,16 @@ export const DEFAULT_RELATIONSHIPS: ContactRelationship[] = [
   },
   {
     id: 'rel-2',
-    contactName: 'Pepper Potts',
-    email: 'pepper@starkindustries.com',
+    contactName: 'Demo User 2',
+    email: 'user2@example.com',
     phone: '+1 (555) 991-0021',
-    organization: 'Stark Industries',
+    organization: 'Demo Enterprise',
     importanceScore: 100,
     lastInteractedAt: Date.now() - 3600000 * 3,
     recommendedCadenceDays: 1,
     relationshipStatus: 'healthy',
     lastChannel: 'messenger',
-    notes: 'Executive alignment & family logistics.'
+    notes: 'Executive alignment & strategic logistics.'
   },
   {
     id: 'rel-3',
@@ -230,13 +230,13 @@ export const DEFAULT_SYNC_STATE: CrossDeviceSyncState = {
       ipLocation: 'New York, US'
     },
     {
-      deviceId: 'dev-stark-glass',
-      deviceName: 'Stark HUD Wearable Core',
+      deviceId: 'dev-wearable-glass',
+      deviceName: 'Executive HUD Wearable Core',
       deviceType: 'web',
       isOnline: true,
       lastSyncedAt: Date.now() - 25000,
       appVersion: 'v2.6.0-hud',
-      ipLocation: 'Stark Tower Lab'
+      ipLocation: 'Executive Lab'
     }
   ]
 };
@@ -350,9 +350,9 @@ const SEED_CALENDAR: CalendarEvent[] = [
     startTime: '09:00 AM',
     endTime: '09:45 AM',
     date: 'Today',
-    location: 'Conference Room Stark Tower / Meet',
+    location: 'Conference Room Executive Center / Meet',
     type: 'briefing',
-    attendees: ['Pepper Potts', 'Tony Stark', 'Jarvis Systems']
+    attendees: ['Executive Team', 'AI Operations']
   },
   {
     id: 'evt-2',
@@ -370,7 +370,7 @@ const SEED_CALENDAR: CalendarEvent[] = [
     startTime: '02:00 PM',
     endTime: '03:00 PM',
     date: 'Today',
-    location: 'Stark Boardroom',
+    location: 'Executive Boardroom',
     type: 'meeting',
     isConflict: false,
     attendees: ['Board of Directors', 'CFO']
@@ -409,10 +409,10 @@ const SEED_MESSAGES: MessageItem[] = [
   },
   {
     id: 'msg-sms-otp',
-    sender: 'Stark Cloud Security',
+    sender: 'Cloud Security Center',
     senderHandle: 'SMS: 77209',
     source: 'sms',
-    content: 'Your FRIDAY authentication verification code is 849-215. Valid for 10 minutes. Do not share this OTP with anyone.',
+    content: 'Your authentication verification code is 849-215. Valid for 10 minutes. Do not share this OTP with anyone.',
     timestamp: '11m ago',
     unread: true,
     priority: 'urgent',
@@ -426,7 +426,7 @@ const SEED_MESSAGES: MessageItem[] = [
     sender: 'John Vance',
     senderHandle: 'viber://john.vance.arch',
     source: 'viber',
-    content: "Hey Tony, I'm heading over to the lab now. Are we still good for the 3:00 PM HUD briefing or should I grab coffee first?",
+    content: "Hey, I'm heading over to the lab now. Are we still good for the 3:00 PM HUD briefing or should I grab coffee first?",
     timestamp: '18m ago',
     unread: true,
     priority: 'standard',
@@ -444,27 +444,27 @@ const SEED_MESSAGES: MessageItem[] = [
   },
   {
     id: 'msg-fb-group',
-    sender: 'Stark Family & Friends Group',
-    senderHandle: 'fb.me/group/stark-family',
+    sender: 'Executive Operations Group',
+    senderHandle: 'fb.me/group/exec-operations',
     source: 'messenger',
     isGroupChat: true,
-    groupName: 'Stark Family & Weekend Trip',
-    groupMembers: ['Pepper Potts', 'Happy Hogan', 'Rhodey', 'Morgan Stark', 'Tony Stark'],
-    content: 'Pepper: We confirmed the Lakehouse reservation for Saturday. Happy: I loaded the jet with supplies. Rhodey: I will bring the barbecue grill by 2 PM!',
+    groupName: 'Executive Operations & Planning',
+    groupMembers: ['Demo User 2', 'Operations Lead', 'Engineering VP', 'Executive User'],
+    content: 'Operations: We confirmed the workshop reservation for Saturday. Engineering: I loaded the presentation deck. Logistics: I will set up the demonstration room by 2 PM!',
     timestamp: '35m ago',
     unread: true,
     priority: 'standard',
     recentGroupMessages: [
-      { sender: 'Pepper Potts', text: 'Confirmed the Lakehouse reservation for this Saturday at 11 AM.', time: '45m ago' },
-      { sender: 'Happy Hogan', text: 'Flight schedule cleared. Van is stocked with luggage and gear.', time: '38m ago' },
-      { sender: 'Rhodey', text: 'I am bringing the barbecue grill and steaks by 2:00 PM.', time: '35m ago' },
-      { sender: 'Morgan Stark', text: 'Can we get juice pops on the way?', time: '30m ago' }
+      { sender: 'Demo User 2', text: 'Confirmed the workshop reservation for this Saturday at 11 AM.', time: '45m ago' },
+      { sender: 'Operations Lead', text: 'Schedule cleared. Equipment is prepared and staged.', time: '38m ago' },
+      { sender: 'Engineering VP', text: 'I am bringing the demonstration prototypes by 2:00 PM.', time: '35m ago' },
+      { sender: 'Logistics Lead', text: 'Meeting room setup is confirmed.', time: '30m ago' }
     ],
-    suggestedReply: 'Sounds perfect everyone! FRIDAY has synced our Saturday itinerary.',
+    suggestedReply: 'Sounds perfect everyone! The itinerary has been synced.',
     suggestedReplies: [
-      'Sounds perfect everyone! FRIDAY has synced our Saturday itinerary.',
-      'Happy, make sure the drone kits are packed too.',
-      'Rhodey, let me know if you need help with the smoker.'
+      'Sounds perfect everyone! The itinerary has been synced.',
+      'Make sure the presentation materials are verified too.',
+      'Let me know if you need assistance with room setup.'
     ]
   },
   {

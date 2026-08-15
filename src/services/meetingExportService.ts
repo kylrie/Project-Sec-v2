@@ -185,11 +185,11 @@ export class MeetingExportService {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(148, 163, 184);
-      doc.text(`Page ${i} of ${pageCount} • FRIDAY Meeting Intelligence System • Stark Industries`, margin, 290);
+      doc.text(`Page ${i} of ${pageCount} • Project Ahri Meeting Intelligence System • Executive Enterprise`, margin, 290);
     }
 
     const safeTitle = session.title.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
-    doc.save(`FRIDAY_Meeting_${safeTitle}_${new Date().toISOString().split('T')[0]}.pdf`);
+    doc.save(`Ahri_Meeting_${safeTitle}_${new Date().toISOString().split('T')[0]}.pdf`);
   }
 
   /**

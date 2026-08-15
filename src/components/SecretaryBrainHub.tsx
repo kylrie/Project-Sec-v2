@@ -252,7 +252,7 @@ export const SecretaryBrainHub: React.FC<SecretaryBrainHubProps> = ({
                   <span className="font-mono text-white font-bold">{briefingV2?.meetingsCount || 4} Today</span>
                 </div>
                 <div className="text-sm font-semibold text-white">First: 09:00 AM Sync</div>
-                <p className="text-xs text-slate-400 mt-1">Stark Boardroom & Live Meet</p>
+                <p className="text-xs text-slate-400 mt-1">Executive Boardroom & Live Meet</p>
               </div>
 
               {/* Card 2: Traffic */}

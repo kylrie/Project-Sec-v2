@@ -168,7 +168,7 @@ export const proactiveSecretaryService = {
           '3. Set milestone timeline for Q4 delivery'
         ],
         requiredDocuments: [
-          { title: 'Q3_Stark_Budget_Deck_Final.pdf', type: 'presentation' },
+          { title: 'Q3_Executive_Budget_Deck_Final.pdf', type: 'presentation' },
           { title: 'Board_Audit_Committee_Roster.docx', type: 'doc' }
         ],
         spokenSummary: "You're meeting with Sarah and the board in 10 minutes. Last meeting, they asked for the budget. Here's that doc."

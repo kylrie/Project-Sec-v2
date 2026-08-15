@@ -72,20 +72,20 @@ const INITIAL_CACHED_EVENTS: GoogleCalendarEvent[] = [
     description: 'Routine dental checkup and cleaning.',
     start: { dateTime: new Date(new Date().setHours(14, 0, 0, 0)).toISOString() }, // 2:00 PM today
     end: { dateTime: new Date(new Date().setHours(15, 0, 0, 0)).toISOString() },   // 3:00 PM today
-    location: 'Stark Medical Tower, Suite 400',
+    location: 'Medical Center, Suite 400',
     attendees: []
   },
   {
     id: 'g-evt-3',
     summary: 'Board Review & Q3 Financial Strategy',
-    description: 'Quarterly review with CFO and Stark Board of Directors.',
+    description: 'Quarterly review with CFO and Board of Directors.',
     start: { dateTime: new Date(new Date().setHours(16, 0, 0, 0)).toISOString() }, // 4:00 PM today
     end: { dateTime: new Date(new Date().setHours(17, 30, 0, 0)).toISOString() },  // 5:30 PM today
-    location: 'Stark Boardroom / Google Meet',
-    hangoutLink: 'https://meet.google.com/brd-revw-stk',
+    location: 'Executive Boardroom / Google Meet',
+    hangoutLink: 'https://meet.google.com/brd-revw-exec',
     attendees: [
-      { email: 'cfo@starkindustries.com', displayName: 'Marcus Reed (CFO)', responseStatus: 'accepted' },
-      { email: 'pepper.potts@stark.com', displayName: 'Pepper Potts', responseStatus: 'accepted' }
+      { email: 'cfo@example.com', displayName: 'Demo User 4 (CFO)', responseStatus: 'accepted' },
+      { email: 'user2@example.com', displayName: 'Demo User 2', responseStatus: 'accepted' }
     ]
   }
 ];
@@ -183,14 +183,14 @@ const INITIAL_CACHED_CONTACTS: GoogleContact[] = [
   },
   {
     resourceName: 'people/c3',
-    displayName: 'Pepper Potts',
-    emailAddresses: ['pepper.potts@stark.com'],
+    displayName: 'Demo User 2',
+    emailAddresses: ['user2@example.com'],
     phoneNumbers: ['+1 (555) 010-0001']
   },
   {
     resourceName: 'people/c4',
-    displayName: 'Marcus Reed',
-    emailAddresses: ['cfo@starkindustries.com', 'marcus.reed@stark.com'],
+    displayName: 'Demo User 4',
+    emailAddresses: ['cfo@example.com', 'user4@example.com'],
     phoneNumbers: ['+1 (555) 014-4421']
   }
 ];
@@ -289,8 +289,8 @@ class GoogleWorkspaceService {
                 isConnected: true,
                 accessToken: token,
                 expiresAt: Date.now() + expiresSec * 1000,
-                userEmail: 'it@thenextperience.com',
-                userName: 'Tony Stark (Executive)',
+                userEmail: 'executive@enterprise.local',
+                userName: 'Executive User',
                 userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
                 grantedScopes: scopes,
                 activePermissions: DEFAULT_PERMISSIONS,
@@ -331,8 +331,8 @@ class GoogleWorkspaceService {
       isConnected: true,
       accessToken: 'gw_auth_token_' + Math.random().toString(36).substring(2, 10),
       expiresAt: Date.now() + 3600 * 1000,
-      userEmail: 'it@thenextperience.com',
-      userName: 'Tony Stark (Executive)',
+      userEmail: 'executive@enterprise.local',
+      userName: 'Executive User',
       userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
       grantedScopes: scopes,
       activePermissions: DEFAULT_PERMISSIONS,
@@ -815,8 +815,8 @@ class GoogleWorkspaceService {
     storageService.saveMessages([
       {
         id: 'msg-' + Date.now(),
-        sender: 'Tony Stark (You)',
-        senderHandle: 'it@thenextperience.com',
+        sender: 'Executive User (You)',
+        senderHandle: 'executive@enterprise.local',
         source: 'gmail',
         subject,
         content: body,
@@ -1032,7 +1032,7 @@ class GoogleWorkspaceService {
     const firstEventTime = firstEvent?.start.dateTime ? new Date(firstEvent.start.dateTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '9:00 AM';
 
     const greeting = new Date().getHours() < 12 ? 'Good morning' : 'Good afternoon';
-    const vocalScript = `${greeting}, sir. You have ${todayEvents.length} meetings scheduled today. The first is ${firstEvent?.summary || 'Executive Briefing'} at ${firstEventTime}. You have ${unreadEmails.length} unread emails, including ${urgentEmails.length > 0 ? `${urgentEmails.length} urgent message from ${urgentEmails[0].fromName}` : 'no critical blockers'}. All traffic corridors to Stark Tower are moving swiftly with optimal weather at 72 degrees.`;
+    const vocalScript = `${greeting}. You have ${todayEvents.length} meetings scheduled today. The first is ${firstEvent?.summary || 'Executive Briefing'} at ${firstEventTime}. You have ${unreadEmails.length} unread emails, including ${urgentEmails.length > 0 ? `${urgentEmails.length} urgent message from ${urgentEmails[0].fromName}` : 'no critical blockers'}. All traffic corridors are moving swiftly with optimal weather at 72 degrees.`;
 
     const briefing: WorkspaceBriefing = {
       id: 'brf-' + Date.now(),

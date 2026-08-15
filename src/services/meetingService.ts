@@ -57,7 +57,7 @@ export const AVAILABLE_PLUGINS: MeetingProviderPlugin[] = [
 ];
 
 const DEFAULT_SPEAKERS: MeetingSpeaker[] = [
-  { id: 'spk-1', name: 'Tony Stark (Executive)', color: '#0ea5e9', role: 'Executive Lead', isLearned: true, utteranceCount: 8 },
+  { id: 'spk-1', name: 'Executive Lead', color: '#0ea5e9', role: 'Executive Lead', isLearned: true, utteranceCount: 8 },
   { id: 'spk-2', name: 'Elena Vance (Lead Architect)', color: '#8b5cf6', role: 'System Architect', isLearned: true, utteranceCount: 6 },
   { id: 'spk-3', name: 'Marcus Reed (DevOps)', color: '#10b981', role: 'Cloud Lead', isLearned: true, utteranceCount: 4 },
   { id: 'spk-4', name: 'Sarah Jenkins (Finance)', color: '#f59e0b', role: 'Finance Director', isLearned: true, utteranceCount: 3 }
@@ -79,11 +79,11 @@ const INITIAL_SAMPLE_SESSION: MeetingSession = {
   transcripts: [
     {
       id: 'ts-1',
-      speaker: 'Tony Stark (Executive)',
+      speaker: 'Executive Lead',
       speakerId: 'spk-1',
       timestamp: '00:05',
       timeSeconds: 5,
-      text: 'Good morning team. We need to finalize the cross-platform latency requirements for the FRIDAY neural voice engine before deploying to executives.',
+      text: 'Good morning team. We need to finalize the cross-platform latency requirements for the neural voice engine before deploying to executives.',
       pitchLevel: 'mid',
       confidence: 0.98
     },
@@ -123,7 +123,7 @@ const INITIAL_SAMPLE_SESSION: MeetingSession = {
     },
     {
       id: 'ts-5',
-      speaker: 'Tony Stark (Executive)',
+      speaker: 'Executive Lead',
       speakerId: 'spk-1',
       timestamp: '01:42',
       timeSeconds: 102,

@@ -2,8 +2,8 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { User as FirebaseUser } from 'firebase/auth';
 
 const env = (import.meta as any).env || {};
-const supabaseUrl = env.VITE_SUPABASE_URL || 'https://placeholder-project.supabase.co';
-const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+const supabaseUrl = env.VITE_SUPABASE_URL || 'https://your-project.supabase.co';
+const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || 'your-anon-key';
 
 export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {

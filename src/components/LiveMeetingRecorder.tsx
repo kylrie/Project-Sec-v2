@@ -225,7 +225,7 @@ export const LiveMeetingRecorder: React.FC<LiveMeetingRecorderProps> = ({ onSpea
     soundEffects.playAcknowledge();
     const snippet: TranscriptSnippet = {
       id: 'ts-' + Math.random().toString(36).substring(2, 9),
-      speaker: 'Tony Stark (Executive)',
+      speaker: 'Executive User',
       speakerId: 'spk-1',
       timestamp: formatDuration(activeSession.durationSeconds),
       timeSeconds: activeSession.durationSeconds,

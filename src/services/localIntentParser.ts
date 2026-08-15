@@ -505,13 +505,13 @@ export function tryParseLocalIntent(rawText: string): LocalParsedResult | null {
     };
   }
 
-  // 19g. Messenger / Viber Group Chat Summarizer: "what did the family group say", "summarize Messenger group", "what is happening in the group chat"
-  if (/what did the (?:family )?group say|summarize (?:the )?(?:messenger|viber|family)?\s*group(?: chat)?|summarize (?:the )?chat/i.test(text)) {
+  // 19g. Messenger / Viber Group Chat Summarizer: "what did the group say", "summarize Messenger group", "what is happening in the group chat"
+  if (/what did the (?:team |operations |family )?group say|summarize (?:the )?(?:messenger|viber|team|operations)?\s*group(?: chat)?|summarize (?:the )?chat/i.test(text)) {
     return {
       isHandledLocally: true,
       intent: 'summarize_messenger_group',
-      spokenReply: `In the Stark Family group chat over the last 24 hours: Pepper confirmed the Lakehouse reservation for Saturday at 11 AM, Happy loaded the transport, and Rhodey is bringing the barbecue grill by 2 PM. Everyone is aligned.`,
-      actionData: { groupName: 'Stark Family & Weekend Trip' }
+      spokenReply: `In the Executive Operations group chat over the last 24 hours: Demo User 2 confirmed the workshop reservation for Saturday at 11 AM, equipment is staged, and demonstration prototypes will arrive by 2 PM. Everyone is aligned.`,
+      actionData: { groupName: 'Executive Operations & Planning' }
     };
   }
 
@@ -520,7 +520,7 @@ export function tryParseLocalIntent(rawText: string): LocalParsedResult | null {
     return {
       isHandledLocally: true,
       intent: 'read_otp_code',
-      spokenReply: `Your Stark Cloud Security OTP code is 849-215. It has been copied to your executive clipboard.`,
+      spokenReply: `Your Cloud Security verification code is 849-215. It has been copied to your executive clipboard.`,
       actionData: { otpCode: '849-215' }
     };
   }

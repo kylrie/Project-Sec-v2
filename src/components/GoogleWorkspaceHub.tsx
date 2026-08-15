@@ -64,7 +64,7 @@ export const GoogleWorkspaceHub: React.FC<GoogleWorkspaceHubProps> = ({
   const [isDrafting, setIsDrafting] = useState(false);
   const [draftRecipient, setDraftRecipient] = useState('Sarah Jenkins');
   const [draftSubject, setDraftSubject] = useState('Q3 Budget Deck Approval');
-  const [draftBody, setDraftBody] = useState('Hi Sarah,\n\nI have reviewed and approved the finalized Q3 budget figures. Please proceed with the audit committee circulation.\n\nBest regards,\nTony Stark');
+  const [draftBody, setDraftBody] = useState('Hi Sarah,\n\nI have reviewed and approved the finalized Q3 budget figures. Please proceed with the audit committee circulation.\n\nBest regards,\nExecutive User');
   const [draftSentSuccess, setDraftSentSuccess] = useState(false);
   const [emailSearchQuery, setEmailSearchQuery] = useState('');
 

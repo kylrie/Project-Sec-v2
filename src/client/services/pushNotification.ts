@@ -4,21 +4,10 @@ import { getToken, onMessage } from 'firebase/messaging';
 export class PushNotificationService {
   private vapidKey = (import.meta as any).env?.VITE_FIREBASE_VAPID_KEY;
 
-  constructor() {
-    if (!this.vapidKey) {
-      console.warn('[PushNotification] VITE_FIREBASE_VAPID_KEY not set. Push notifications disabled.');
-    }
-  }
-
   /**
    * Request Notification permission and retrieve FCM Push Token
    */
   public async requestPermission(): Promise<string | null> {
-    if (!this.vapidKey) {
-      console.warn('[PushNotification] VITE_FIREBASE_VAPID_KEY not set. Push notifications disabled.');
-      return null;
-    }
-
     if (typeof window === 'undefined' || !('Notification' in window)) {
       console.warn('[PushNotification] Notifications not supported in this environment.');
       return null;
@@ -39,6 +28,11 @@ export class PushNotificationService {
 
       const messaging = await getClientMessaging();
       if (!messaging) return null;
+
+      if (!this.vapidKey) {
+        console.warn('[PushNotification] VITE_FIREBASE_VAPID_KEY not set. Skipping FCM token retrieval.');
+        return null;
+      }
 
       const token = await getToken(messaging, {
         vapidKey: this.vapidKey,
