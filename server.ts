@@ -512,28 +512,34 @@ Format as JSON:
   // ==========================================
 
   // Morning Briefing 2.0: Multi-dimensional Secretary Briefing (Meetings, Traffic, Urgent Emails, Workout/Habit Gaps)
-  // Morning Briefing 2.0: Multi-dimensional Secretary Briefing (Meetings, Traffic, Urgent Emails, Workout/Habit Gaps)
   app.post("/api/proactive/morning-briefing-v2", async (req, res) => {
-    const { calendarEvents = [], unreadEmails = [], workoutDaysGap = 3, freeSlots = ["02:00 PM - 03:00 PM"], userTimezone = "UTC" } = req.body;
+    const safeCalendar = Array.isArray(req.body?.calendarEvents) ? req.body.calendarEvents : [];
+    const safeEmails = Array.isArray(req.body?.unreadEmails) ? req.body.unreadEmails : [];
+    const safeFreeSlots = Array.isArray(req.body?.freeSlots) ? req.body.freeSlots : ["02:00 PM - 03:00 PM"];
+    const workoutDaysGap = Number(req.body?.workoutDaysGap ?? 3);
+    const userTimezone = req.body?.userTimezone || "UTC";
+
     const defaultBriefing = {
-      meetingsCount: calendarEvents.length,
+      meetingsCount: safeCalendar.length,
       trafficStatus: {
-        firstMeetingTime: calendarEvents[0]?.startTime || "09:00 AM",
+        firstMeetingTime: safeCalendar[0]?.startTime || "09:00 AM",
         routeStatus: "light",
         departureWarning: "Optimal departure in 20 minutes",
         commuteMinutes: 15
       },
       urgentInbox: {
-        urgentCount: unreadEmails.length,
-        vipSenders: unreadEmails.slice(0, 2).map((e: any) => e.from || "Executive Contact"),
-        topSubject: unreadEmails[0]?.subject || "Executive inbox is up to date"
+        urgentCount: safeEmails.length,
+        vipSenders: safeEmails.slice(0, 2).map((e: any) => e?.from || "Executive Contact"),
+        topSubject: safeEmails[0]?.subject || "Executive inbox is up to date"
       },
       habitAndHealthCheck: {
         workoutDaysGap,
-        workoutSlotRecommended: freeSlots[0] || "02:00 PM",
+        workoutSlotRecommended: safeFreeSlots[0] || "02:00 PM",
         focusBlocksReserved: 1
       },
-      vocalScript: `Good morning. You have ${calendarEvents.length} scheduled commitments today. Your executive inbox is monitored, and all primary systems remain fully operational.`
+      vocalScript: safeCalendar.length > 0
+        ? `Good morning. You have ${safeCalendar.length} scheduled commitment${safeCalendar.length > 1 ? 's' : ''} today. First session begins at ${safeCalendar[0]?.startTime || '09:00 AM'}.`
+        : `Good morning. You have no scheduled commitments on your calendar today. Your executive inbox is up to date and all primary systems remain fully operational.`
     };
 
     try {
@@ -546,10 +552,10 @@ Format as JSON:
       const prompt = `You are Project Ahri, autonomous executive AI secretary and right hand.
 Synthesize an intelligent, human-like Morning Briefing 2.0.
 Inputs:
-- Calendar: ${JSON.stringify(calendarEvents)}
-- Urgent unread emails: ${JSON.stringify(unreadEmails)}
+- Calendar: ${JSON.stringify(safeCalendar)}
+- Urgent unread emails: ${JSON.stringify(safeEmails)}
 - Workout habit gap: ${workoutDaysGap} days since last workout.
-- Free afternoon slots: ${JSON.stringify(freeSlots)}
+- Free afternoon slots: ${JSON.stringify(safeFreeSlots)}
 - Timezone: ${userTimezone}
 
 Generate a concise, crisp executive briefing formatted in JSON matching this exact style:
@@ -593,7 +599,9 @@ JSON Schema:
 
   // Habit Learning Engine: Discovers behavioral patterns & suggests executive calendar/life rules
   app.post("/api/proactive/habit-learning", async (req, res) => {
-    const { historicalEvents = [], historicalCommunications = [], existingHabits = [] } = req.body;
+    const historicalEvents = Array.isArray(req.body?.historicalEvents) ? req.body.historicalEvents : [];
+    const historicalCommunications = Array.isArray(req.body?.historicalCommunications) ? req.body.historicalCommunications : [];
+    const existingHabits = Array.isArray(req.body?.existingHabits) ? req.body.existingHabits : [];
     const defaultHabits = { discoveredHabits: [] };
 
     try {
@@ -642,7 +650,11 @@ Return JSON:
 
   // Predictive Meeting Preparation: Auto-surfaces relevant emails, prior minutes & briefing docs
   app.post("/api/proactive/predictive-prep", async (req, res) => {
-    const { meetingTitle = "Executive Session", attendees = [], pastMinutes = [], inboxThreads = [] } = req.body;
+    const meetingTitle = req.body?.meetingTitle || "Executive Session";
+    const attendees = Array.isArray(req.body?.attendees) ? req.body.attendees : [];
+    const pastMinutes = Array.isArray(req.body?.pastMinutes) ? req.body.pastMinutes : [];
+    const inboxThreads = Array.isArray(req.body?.inboxThreads) ? req.body.inboxThreads : [];
+    
     const defaultPrep = {
       meetingTitle,
       attendees,

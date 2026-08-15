@@ -21,90 +21,103 @@ class WakeWordService {
     return true;
   }
 
+  private async checkMicPermission(): Promise<boolean> {
+    try {
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return false;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop());
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async start() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      console.error('[WakeWord] SpeechRecognition API not available in this environment');
-      this.callbacks.onError('Speech recognition not supported in this browser');
+      console.warn('[WakeWord] SpeechRecognition API not available in this environment');
+      this.callbacks.onError?.('Speech recognition not supported in this browser');
       return;
     }
 
-    // FIX: Explicitly request microphone permission before starting speech recognition
-    // This triggers Electron's permission handler and warms up the audio pipeline
+    // Explicitly verify microphone permission before starting speech recognition
+    const hasPermission = await this.checkMicPermission();
+    if (!hasPermission) {
+      console.warn('[WakeWord] Microphone access denied or AudioContext error');
+      this.callbacks.onError?.('Microphone access denied. Please allow mic permission.');
+      return;
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Release the stream immediately — we just needed the permission grant
-      stream.getTracks().forEach(track => track.stop());
-      console.log('[WakeWord] Microphone permission granted');
-    } catch (micErr) {
-      console.error('[WakeWord] Microphone permission denied:', micErr);
-      this.callbacks.onError('Microphone access denied. Please allow microphone access for voice commands.');
-      return;
-    }
+      this.recognition = new SpeechRecognition();
+      this.recognition.continuous = true;
+      this.recognition.interimResults = true;
+      this.recognition.lang = 'en-US';
 
-    this.recognition = new SpeechRecognition();
-    this.recognition.continuous = true;
-    this.recognition.interimResults = true;
-    this.recognition.lang = 'en-US';
+      this.recognition.onresult = (event: any) => {
+        let interim = '';
+        this.finalTranscript = '';
 
-    this.recognition.onresult = (event: any) => {
-      let interim = '';
-      this.finalTranscript = '';
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript.toLowerCase().trim();
-        if (event.results[i].isFinal) {
-          this.finalTranscript += transcript;
-          
-          // Check if transcript contains "hey ahri" or "hi ahri"
-          if (transcript.includes('hey ahri') || transcript.includes('hi ahri') || transcript.includes('okay ahri')) {
-            if (!this.wakeWordDetected) {
-              this.wakeWordDetected = true;
-              this.callbacks.onWakeWordDetected();
-              this.callbacks.onListeningStart();
-              this.playChime();
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript.toLowerCase().trim();
+          if (event.results[i].isFinal) {
+            this.finalTranscript += transcript;
+            
+            // Check if transcript contains "hey ahri" or "hi ahri"
+            if (transcript.includes('hey ahri') || transcript.includes('hi ahri') || transcript.includes('okay ahri')) {
+              if (!this.wakeWordDetected) {
+                this.wakeWordDetected = true;
+                this.callbacks.onWakeWordDetected?.();
+                this.callbacks.onListeningStart?.();
+                this.playChime();
+              }
             }
+            
+            // If already in command mode, send the transcript (minus wake word)
+            if (this.wakeWordDetected && !transcript.includes('hey ahri') && transcript.length > 3) {
+              this.callbacks.onTranscript?.(this.finalTranscript.replace(/hey ahri|hi ahri|okay ahri/g, '').trim());
+              this.stopCommandMode();
+            }
+          } else {
+            interim += transcript;
           }
-          
-          // If already in command mode, send the transcript (minus wake word)
-          if (this.wakeWordDetected && !transcript.includes('hey ahri') && transcript.length > 3) {
-            this.callbacks.onTranscript(this.finalTranscript.replace(/hey ahri|hi ahri|okay ahri/g, '').trim());
-            this.stopCommandMode();
-          }
-        } else {
-          interim += transcript;
         }
-      }
 
-      // Reset silence timer on any speech
-      if (interim.length > 0 || this.finalTranscript.length > 0) {
-        this.resetSilenceTimer();
-      }
-    };
+        // Reset silence timer on any speech
+        if (interim.length > 0 || this.finalTranscript.length > 0) {
+          this.resetSilenceTimer();
+        }
+      };
 
-    this.recognition.onerror = (event: any) => {
-      if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        console.error('[WakeWord] Error:', event.error);
-      }
-      // Auto-restart on error (except manual stop) — uses backoff
-      if (this.isListening && event.error !== 'aborted') {
-        this.restart();
-      }
-    };
+      this.recognition.onerror = (event: any) => {
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          console.warn('[WakeWord] Status notice:', event.error);
+        }
+        // Auto-restart on error (except manual stop) — uses backoff
+        if (this.isListening && event.error !== 'aborted') {
+          this.restart();
+        }
+      };
 
-    this.recognition.onend = () => {
-      if (this.isListening) {
-        // Reset backoff on successful session end (not an error)
-        this.restartDelay = 1000;
-        this.restart();
-      }
-    };
+      this.recognition.onend = () => {
+        if (this.isListening) {
+          // Reset backoff on successful session end (not an error)
+          this.restartDelay = 1000;
+          this.restart();
+        }
+      };
 
-    this.isListening = true;
-    try {
+      this.isListening = true;
       this.recognition.start();
-    } catch {}
-    console.log('[WakeWord] Listening for "Hey Ahri"... (Free mode)');
+      console.log('[WakeWord] Listening for "Hey Ahri"... (Free mode)');
+    } catch (e: any) {
+      if (e.message?.includes('AudioContext') || e.name === 'NotAllowedError') {
+        console.warn('[WakeWord] Microphone access denied or AudioContext error');
+        this.callbacks.onError?.('Microphone access denied. Please allow mic permission.');
+      } else {
+        console.warn('[WakeWord] Startup notice:', e?.message);
+      }
+    }
   }
 
   // BUG 1 FIX: Exponential backoff restart with state checks

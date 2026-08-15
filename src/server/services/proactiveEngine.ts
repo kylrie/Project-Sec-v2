@@ -31,10 +31,10 @@ export class ProactiveEngine {
       localHours = now.getHours();
     }
 
-    // 2. Fetch Calendar Events
+    // 2. Fetch Calendar Events safely
     let events: any[] = [];
-    if (isSupabaseConfigured()) {
-      try {
+    try {
+      if (isSupabaseConfigured()) {
         const db = getSupabaseAdmin();
         const { data } = await db
           .from('calendar_events')
@@ -43,17 +43,18 @@ export class ProactiveEngine {
           .gte('start_time', new Date(now.getTime() - 1800000).toISOString())
           .order('start_time', { ascending: true })
           .limit(5);
-        if (data) events = data;
-      } catch (e) {
-        events = sqliteDbRepository.listCalendarEvents('Today');
+        if (data && Array.isArray(data)) events = data;
+      } else {
+        const res = sqliteDbRepository.listCalendarEvents('Today');
+        if (res && Array.isArray(res)) events = res;
       }
-    } else {
-      events = sqliteDbRepository.listCalendarEvents('Today');
+    } catch {
+      events = [];
     }
 
     // Evaluate upcoming meetings in next 30 minutes
     if (events && events.length > 0) {
-      const nextMeeting = events[0];
+      const nextMeeting = events[0] || {};
       const title = nextMeeting.title || 'Executive Session';
       const meetingLink = nextMeeting.hangout_link || (nextMeeting.location?.includes('http') ? nextMeeting.location : null);
 
@@ -67,34 +68,38 @@ export class ProactiveEngine {
         actionPayload: {
           meetingTitle: title,
           link: meetingLink,
-          startTime: nextMeeting.start_time
+          startTime: nextMeeting.start_time || 'Soon'
         },
         spokenPrompt: `Sir, you have ${title} starting shortly. I can prepare your talking points and open the conference line.`
       });
     }
 
-    // 3. Fetch Tasks
+    // 3. Fetch Tasks safely
     let tasks: any[] = [];
     try {
-      tasks = sqliteDbRepository.listTasks('pending');
-    } catch {}
+      const res = sqliteDbRepository.listTasks('pending');
+      if (res && Array.isArray(res)) tasks = res;
+    } catch {
+      tasks = [];
+    }
 
-    const urgentTasks = tasks.filter(t => t.priority === 'high' || t.priority === 'urgent');
+    const urgentTasks = (tasks || []).filter(t => t && (t.priority === 'high' || t.priority === 'urgent'));
     if (urgentTasks.length > 0) {
-      const topTask = urgentTasks[0];
+      const topTask = urgentTasks[0] || {};
+      const taskTitle = topTask.title || 'Priority Item';
       suggestions.push({
         id: `sug-task-${Date.now()}`,
-        title: `Priority Item: ${topTask.title}`,
+        title: `Priority Item: ${taskTitle}`,
         description: `High-priority objective pending execution. Would you like to block 45 minutes of deep focus time?`,
         urgency: 'medium',
         category: 'tasks',
         actionIntent: 'block_focus_time',
         actionPayload: {
-          taskTitle: topTask.title,
+          taskTitle,
           taskId: topTask.id,
           durationMinutes: 45
         },
-        spokenPrompt: `You have an open priority item: ${topTask.title}. Shall I allocate forty-five minutes of focus time on your schedule?`
+        spokenPrompt: `You have an open priority item: ${taskTitle}. Shall I allocate forty-five minutes of focus time on your schedule?`
       });
     }
 
