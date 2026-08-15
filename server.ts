@@ -18,7 +18,9 @@ import { tasksRouter } from "./src/server/routes/tasks.js";
 import { userRouter } from "./src/server/routes/user.js";
 import { deviceRouter } from "./src/server/routes/devices.js";
 import { proactiveRouter } from "./src/server/routes/proactive.js";
+import { suggestionRouter } from "./src/server/routes/suggestions.js";
 import { registerDeviceWs, unregisterDeviceWs } from "./src/server/services/meshService.js";
+
 
 
 async function startServer() {
@@ -122,6 +124,8 @@ async function startServer() {
   app.use("/api/user", userRouter);
   app.use("/api/devices", deviceRouter);
   app.use("/api/proactive", proactiveRouter);
+  app.use("/api/suggestions", suggestionRouter);
+
 
 
   // Dynamic public config for Firebase Messaging Service Worker
