@@ -31,12 +31,6 @@ export function useWakeWord() {
   }, []);
 
   useEffect(() => {
-    const accessKey = (import.meta as any).env?.VITE_PICOVOICE_ACCESS_KEY;
-    if (!accessKey) {
-      console.warn('[useWakeWord] No Picovoice access key configured');
-      return;
-    }
-
     serviceRef.current = new WakeWordService({
       onWakeWordDetected: () => {
         console.log('Wake word detected!');
@@ -45,12 +39,11 @@ export function useWakeWord() {
       onListeningStart: () => setIsListening(true),
       onListeningEnd: () => setIsListening(false),
       onTranscript: handleTranscript,
-      onError: (err) => console.error('Wake word error:', err),
+      onError: (err: any) => console.error('Wake word error:', err),
     });
 
-    serviceRef.current.initialize(accessKey).then(() => {
-      serviceRef.current?.start();
-      setIsWakeWordActive(true);
+    serviceRef.current.initialize().then(() => {
+      // Ready (inactive until toggled on or user starts)
     });
 
     return () => {

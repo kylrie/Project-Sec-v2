@@ -85,8 +85,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleToggleWakeWord = async () => {
     try {
       if (!wakeWordEnabled) {
-        const accessKey = (import.meta as any).env?.VITE_PICOVOICE_ACCESS_KEY || '';
-        await WakeWord.initialize({ accessKey });
+        await WakeWord.initialize();
         await WakeWord.startListening();
         setWakeWordEnabled(true);
       } else {
@@ -97,6 +96,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       console.warn('Error toggling native wake word:', e);
     }
   };
+
 
   const handleSave = () => {
 
@@ -378,12 +378,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     Always-On "Hey Ahri" Wake Word
                   </h4>
                   <span className="px-1.5 py-0.5 text-[9px] font-semibold bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30 uppercase">
-                    Picovoice Local
+                    Free / Zero-Key
                   </span>
                 </div>
                 <p className="text-[11px] text-zinc-400 mt-0.5">
-                  Hands-free local voice activation. Say "Hey Ahri" to trigger listening without pressing a button.
+                  Hands-free continuous recognition. Say "Hey Ahri" to trigger listening without pressing any buttons.
                 </p>
+
               </div>
             </div>
             <button

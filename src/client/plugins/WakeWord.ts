@@ -1,7 +1,7 @@
 import { registerPlugin, PluginListenerHandle } from '@capacitor/core';
 
 export interface WakeWordPlugin {
-  initialize(options: { accessKey: string; keywordPath?: string }): Promise<void>;
+  initialize(): Promise<void>;
   startListening(): Promise<void>;
   stopListening(): Promise<void>;
   addListener(

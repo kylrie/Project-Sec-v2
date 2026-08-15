@@ -1,6 +1,5 @@
 package com.project.ahri.overlay;
 
-import ai.picovoice.porcupine.Porcupine;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -8,13 +7,14 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.PixelFormat;
-import android.media.AudioFormat;
-import android.media.AudioRecord;
-import android.media.MediaRecorder;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -23,6 +23,7 @@ import android.view.WindowManager;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import androidx.core.app.NotificationCompat;
+import java.util.ArrayList;
 
 import com.project.ahri.MainActivity;
 import com.project.ahri.R;
@@ -42,8 +43,7 @@ public class FloatingBubbleService extends Service {
     private float initialTouchY = 0f;
     private boolean isExpanded = false;
 
-    private Porcupine porcupine = null;
-    private AudioRecord audioRecord = null;
+    private SpeechRecognizer speechRecognizer = null;
     private boolean isListening = false;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
@@ -197,74 +197,78 @@ public class FloatingBubbleService extends Service {
     }
 
     private void startWakeWordDetection() {
-        new Thread(new Runnable() {
+        mainHandler.post(new Runnable() {
             @Override
             public void run() {
                 try {
-                    String customPath = "hey-ahri_android.ppn";
-                    boolean hasCustomAsset = false;
-                    try {
-                        getAssets().open(customPath).close();
-                        hasCustomAsset = true;
-                    } catch (Exception ignored) {}
+                    speechRecognizer = SpeechRecognizer.createSpeechRecognizer(FloatingBubbleService.this);
+                    speechRecognizer.setRecognitionListener(new RecognitionListener() {
+                        @Override public void onReadyForSpeech(Bundle params) {}
+                        @Override public void onBeginningOfSpeech() {}
+                        @Override public void onRmsChanged(float rmsdB) {}
+                        @Override public void onBufferReceived(byte[] buffer) {}
+                        @Override public void onEndOfSpeech() {}
 
-                    String accessKey = "YOUR_PICOVOICE_ACCESS_KEY";
-                    Porcupine.Builder builder = new Porcupine.Builder().setAccessKey(accessKey);
-                    if (hasCustomAsset) {
-                        builder.setKeywordPaths(new String[]{customPath});
-                    } else {
-                        builder.setKeywords(new Porcupine.BuiltInKeyword[]{
-                            Porcupine.BuiltInKeyword.JARVIS,
-                            Porcupine.BuiltInKeyword.PORCUPINE
-                        });
-                    }
-
-                    porcupine = builder.build(FloatingBubbleService.this);
-                    final int sampleRate = porcupine.getSampleRate();
-                    final int frameLength = porcupine.getFrameLength();
-
-                    int minBufferSize = AudioRecord.getMinBufferSize(
-                        sampleRate,
-                        AudioFormat.CHANNEL_IN_MONO,
-                        AudioFormat.ENCODING_PCM_16BIT
-                    );
-
-                    audioRecord = new AudioRecord(
-                        MediaRecorder.AudioSource.MIC,
-                        sampleRate,
-                        AudioFormat.CHANNEL_IN_MONO,
-                        AudioFormat.ENCODING_PCM_16BIT,
-                        Math.max(minBufferSize, frameLength * 2)
-                    );
-
-                    audioRecord.startRecording();
-                    isListening = true;
-
-                    short[] buffer = new short[frameLength];
-                    while (isListening) {
-                        int read = (audioRecord != null) ? audioRecord.read(buffer, 0, frameLength) : 0;
-                        if (read == frameLength && porcupine != null) {
-                            int keywordIndex = porcupine.process(buffer);
-                            if (keywordIndex >= 0) {
-                                mainHandler.post(new Runnable() {
+                        @Override
+                        public void onResults(Bundle results) {
+                            ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                            String text = (matches != null && !matches.isEmpty()) ? matches.get(0).toLowerCase() : "";
+                            if (text.contains("hey ahri") || text.contains("hi ahri") || text.contains("ahri")) {
+                                ImageView bubbleIcon = (bubbleView != null) ? bubbleView.findViewById(R.id.bubble_icon) : null;
+                                LinearLayout expandedPanel = (bubbleView != null) ? bubbleView.findViewById(R.id.expanded_panel) : null;
+                                if (!isExpanded) {
+                                    toggleExpanded(expandedPanel, bubbleIcon);
+                                }
+                                launchVoiceCommand();
+                            }
+                            if (isListening) {
+                                mainHandler.postDelayed(new Runnable() {
                                     @Override
                                     public void run() {
-                                        final ImageView bubbleIcon = (bubbleView != null) ? bubbleView.findViewById(R.id.bubble_icon) : null;
-                                        final LinearLayout expandedPanel = (bubbleView != null) ? bubbleView.findViewById(R.id.expanded_panel) : null;
-                                        if (!isExpanded) {
-                                            toggleExpanded(expandedPanel, bubbleIcon);
-                                        }
-                                        launchVoiceCommand();
+                                        startWakeWordDetection();
                                     }
-                                });
+                                }, 500);
                             }
                         }
-                    }
-                } catch (Exception ignored) {
-                    // Graceful fallback
-                }
+
+                        @Override
+                        public void onPartialResults(Bundle partialResults) {
+                            ArrayList<String> matches = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                            String text = (matches != null && !matches.isEmpty()) ? matches.get(0).toLowerCase() : "";
+                            if (text.contains("hey ahri") || text.contains("hi ahri") || text.contains("ahri")) {
+                                ImageView bubbleIcon = (bubbleView != null) ? bubbleView.findViewById(R.id.bubble_icon) : null;
+                                LinearLayout expandedPanel = (bubbleView != null) ? bubbleView.findViewById(R.id.expanded_panel) : null;
+                                if (!isExpanded) {
+                                    toggleExpanded(expandedPanel, bubbleIcon);
+                                }
+                                launchVoiceCommand();
+                            }
+                        }
+
+                        @Override
+                        public void onError(int error) {
+                            if (isListening) {
+                                mainHandler.postDelayed(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        startWakeWordDetection();
+                                    }
+                                }, 1000);
+                            }
+                        }
+
+                        @Override public void onEvent(int eventType, Bundle params) {}
+                    });
+
+                    Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                    intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                    intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+
+                    isListening = true;
+                    speechRecognizer.startListening(intent);
+                } catch (Exception ignored) {}
             }
-        }).start();
+        });
     }
 
     private void toggleExpanded(LinearLayout panel, ImageView bubble) {
@@ -285,22 +289,16 @@ public class FloatingBubbleService extends Service {
         isRunning = false;
         isListening = false;
         try {
-            if (audioRecord != null) {
-                audioRecord.stop();
-                audioRecord.release();
+            if (speechRecognizer != null) {
+                speechRecognizer.destroy();
             }
         } catch (Exception ignored) {}
-        try {
-            if (porcupine != null) {
-                porcupine.delete();
-            }
-        } catch (Exception ignored) {}
+        speechRecognizer = null;
 
         if (bubbleView != null && windowManager != null) {
             try {
                 windowManager.removeView(bubbleView);
-            } catch (Exception ignored) {
-            }
+            } catch (Exception ignored) {}
             bubbleView = null;
         }
     }

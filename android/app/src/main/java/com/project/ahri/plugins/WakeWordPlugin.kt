@@ -1,16 +1,12 @@
 package com.project.ahri.plugins
 
-import ai.picovoice.porcupine.*
-import android.content.Context
-import android.media.AudioFormat
-import android.media.AudioRecord
-import android.media.MediaRecorder
+import android.content.Intent
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.speech.SpeechRecognizer
 import android.speech.RecognitionListener
+import android.speech.SpeechRecognizer
 import android.speech.RecognizerIntent
-import android.content.Intent
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -20,41 +16,16 @@ import com.getcapacitor.annotation.CapacitorPlugin
 @CapacitorPlugin(name = "WakeWord")
 class WakeWordPlugin : Plugin() {
     
-    private var porcupine: Porcupine? = null
-    private var audioRecord: AudioRecord? = null
-    private var isListening = false
     private var speechRecognizer: SpeechRecognizer? = null
+    private var isListening = false
     private val handler = Handler(Looper.getMainLooper())
     private var silenceRunnable: Runnable? = null
+    private var wakeWordDetected = false
     
     @PluginMethod
     fun initialize(call: PluginCall) {
-        val accessKey = call.getString("accessKey") ?: run {
-            call.reject("Missing Picovoice access key")
-            return
-        }
-        
-        try {
-            val customPath = call.getString("keywordPath") ?: "hey-ahri_android.ppn"
-            val hasCustomAsset = try {
-                context.assets.open(customPath).close()
-                true
-            } catch (e: Exception) {
-                false
-            }
-
-            val builder = Porcupine.Builder().setAccessKey(accessKey)
-            if (hasCustomAsset) {
-                builder.setKeywordPaths(arrayOf(customPath))
-            } else {
-                builder.setKeywords(arrayOf(Porcupine.BuiltInKeyword.JARVIS, Porcupine.BuiltInKeyword.PORCUPINE))
-            }
-
-            porcupine = builder.build(context)
-            call.resolve()
-        } catch (e: Exception) {
-            call.reject("Failed to initialize Porcupine: ${e.message}")
-        }
+        // No key needed for free version
+        call.resolve()
     }
     
     @PluginMethod
@@ -65,130 +36,100 @@ class WakeWordPlugin : Plugin() {
         }
         
         isListening = true
-        startPorcupineListening()
+        startContinuousListening()
         call.resolve()
     }
     
     @PluginMethod
     fun stopListening(call: PluginCall) {
         isListening = false
-        stopAudioCapture()
+        wakeWordDetected = false
         stopSpeechRecognition()
         call.resolve()
     }
     
-    private fun startPorcupineListening() {
-        val sampleRate = porcupine?.sampleRate ?: 16000
-        val frameLength = porcupine?.frameLength ?: 512
-        
-        val minBufferSize = AudioRecord.getMinBufferSize(
-            sampleRate,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT
-        )
-        
-        try {
-            audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.MIC,
-                sampleRate,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                maxOf(minBufferSize, frameLength * 2)
-            )
-            
-            audioRecord?.startRecording()
-            
-            Thread {
-                val buffer = ShortArray(frameLength)
-                while (isListening) {
-                    val read = audioRecord?.read(buffer, 0, frameLength) ?: 0
-                    if (read == frameLength) {
-                        try {
-                            val keywordIndex = porcupine?.process(buffer)
-                            if (keywordIndex != null && keywordIndex >= 0) {
-                                handler.post {
-                                    notifyWakeWordDetected()
-                                    startSpeechToText()
-                                }
+    private fun startContinuousListening() {
+        handler.post {
+            try {
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+                speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) {}
+                    override fun onBeginningOfSpeech() {}
+                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+                    override fun onEndOfSpeech() {}
+                    
+                    override fun onResults(results: Bundle?) {
+                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        val transcript = matches?.firstOrNull()?.lowercase() ?: ""
+                        
+                        // Check for wake word
+                        if (!wakeWordDetected && (transcript.contains("hey ahri") || transcript.contains("hi ahri") || transcript.contains("ahri"))) {
+                            wakeWordDetected = true
+                            notifyEvent("wake_word_detected")
+                            notifyEvent("listening_started")
+                            
+                            restartListening()
+                        } 
+                        // If wake word already detected, this is the command
+                        else if (wakeWordDetected) {
+                            val command = transcript.replace("hey ahri", "").replace("hi ahri", "").replace("ahri", "").trim()
+                            if (command.length > 2) {
+                                notifyEvent("transcript_ready", command)
+                                wakeWordDetected = false
+                                notifyEvent("listening_ended")
                             }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
+                            restartListening()
+                        } else {
+                            restartListening()
                         }
                     }
+                    
+                    override fun onPartialResults(partialResults: Bundle?) {
+                        val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        val transcript = matches?.firstOrNull()?.lowercase() ?: ""
+                        
+                        // Early wake word detection from partial results
+                        if (!wakeWordDetected && (transcript.contains("hey ahri") || transcript.contains("hi ahri") || transcript.contains("ahri"))) {
+                            wakeWordDetected = true
+                            notifyEvent("wake_word_detected")
+                            notifyEvent("listening_started")
+                        }
+                    }
+                    
+                    override fun onError(error: Int) {
+                        if (isListening) {
+                            handler.postDelayed({ restartListening() }, 500)
+                        }
+                    }
+                    
+                    override fun onEvent(eventType: Int, params: Bundle?) {}
+                })
+                
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
                 }
-            }.start()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-    
-    private fun notifyWakeWordDetected() {
-        val ret = JSObject()
-        ret.put("event", "wake_word_detected")
-        notifyListeners("wakeWordEvent", ret)
-    }
-    
-    private fun startSpeechToText() {
-        stopAudioCapture() // Stop wake word to free mic
-        
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
-        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: android.os.Bundle?) {
-                notifyListeners("wakeWordEvent", JSObject().apply {
-                    put("event", "listening_started")
-                })
-            }
-            
-            override fun onResults(results: android.os.Bundle?) {
-                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                val transcript = matches?.firstOrNull() ?: ""
                 
-                notifyListeners("wakeWordEvent", JSObject().apply {
-                    put("event", "transcript_ready")
-                    put("transcript", transcript)
-                })
+                speechRecognizer?.startListening(intent)
                 
-                // Auto-restart wake word after processing
-                handler.postDelayed({ startPorcupineListening() }, 500)
+                silenceRunnable = Runnable {
+                    if (isListening && !wakeWordDetected) {
+                        restartListening()
+                    }
+                }
+                handler.postDelayed(silenceRunnable!!, 10000)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-            
-            override fun onError(error: Int) {
-                notifyListeners("wakeWordEvent", JSObject().apply {
-                    put("event", "error")
-                    put("code", error)
-                })
-                handler.postDelayed({ startPorcupineListening() }, 1000)
-            }
-            
-            override fun onPartialResults(p0: android.os.Bundle?) {}
-            override fun onBeginningOfSpeech() {}
-            override fun onBufferReceived(p0: ByteArray?) {}
-            override fun onEndOfSpeech() {}
-            override fun onEvent(p0: Int, p1: android.os.Bundle?) {}
-            override fun onRmsChanged(p0: Float) {}
-        })
-        
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         }
-        
-        speechRecognizer?.startListening(intent)
-        
-        // Auto-stop after 10 seconds if no result
-        silenceRunnable = Runnable {
-            speechRecognizer?.stopListening()
-        }
-        handler.postDelayed(silenceRunnable!!, 10000)
     }
     
-    private fun stopAudioCapture() {
-        try {
-            audioRecord?.stop()
-            audioRecord?.release()
-        } catch (e: Exception) {}
-        audioRecord = null
+    private fun restartListening() {
+        if (!isListening) return
+        stopSpeechRecognition()
+        startContinuousListening()
     }
     
     private fun stopSpeechRecognition() {
@@ -199,13 +140,16 @@ class WakeWordPlugin : Plugin() {
         speechRecognizer = null
     }
     
+    private fun notifyEvent(event: String, transcript: String = "") {
+        val ret = JSObject()
+        ret.put("event", event)
+        if (transcript.isNotEmpty()) ret.put("transcript", transcript)
+        notifyListeners("wakeWordEvent", ret)
+    }
+    
     override fun handleOnDestroy() {
         isListening = false
-        stopAudioCapture()
         stopSpeechRecognition()
-        try {
-            porcupine?.delete()
-        } catch (e: Exception) {}
         super.handleOnDestroy()
     }
 }

@@ -1,16 +1,16 @@
 package com.project.ahri.overlay
 
-import ai.picovoice.porcupine.Porcupine
 import android.app.Service
 import android.content.Intent
 import android.graphics.PixelFormat
-import android.media.AudioFormat
-import android.media.AudioRecord
-import android.media.MediaRecorder
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.os.Bundle
 import android.view.*
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -27,8 +27,7 @@ class FloatingBubbleService : Service() {
     private var initialTouchY = 0f
     private var isExpanded = false
 
-    private var porcupine: Porcupine? = null
-    private var audioRecord: AudioRecord? = null
+    private var speechRecognizer: SpeechRecognizer? = null
     private var isListening = false
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -39,7 +38,7 @@ class FloatingBubbleService : Service() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         showBubble()
         
-        // Start wake word detection when bubble is active
+        // Start continuous wake word listening (Free, native SpeechRecognizer)
         startWakeWordDetection()
     }
 
@@ -125,66 +124,65 @@ class FloatingBubbleService : Service() {
     }
 
     private fun startWakeWordDetection() {
-        Thread {
+        mainHandler.post {
             try {
-                val hasCustomAsset = try {
-                    assets.open("hey-ahri_android.ppn").close()
-                    true
-                } catch (e: Exception) {
-                    false
-                }
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+                speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) {}
+                    override fun onBeginningOfSpeech() {}
+                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+                    override fun onEndOfSpeech() {}
 
-                // In production, user provides key in config/preferences
-                val accessKey = "YOUR_PICOVOICE_ACCESS_KEY"
-                val builder = Porcupine.Builder().setAccessKey(accessKey)
-                if (hasCustomAsset) {
-                    builder.setKeywordPaths(arrayOf("hey-ahri_android.ppn"))
-                } else {
-                    builder.setKeywords(arrayOf(Porcupine.BuiltInKeyword.JARVIS, Porcupine.BuiltInKeyword.PORCUPINE))
-                }
-
-                porcupine = builder.build(this)
-                val sampleRate = porcupine?.sampleRate ?: 16000
-                val frameLength = porcupine?.frameLength ?: 512
-
-                val minBufferSize = AudioRecord.getMinBufferSize(
-                    sampleRate,
-                    AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT
-                )
-
-                audioRecord = AudioRecord(
-                    MediaRecorder.AudioSource.MIC,
-                    sampleRate,
-                    AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT,
-                    maxOf(minBufferSize, frameLength * 2)
-                )
-
-                audioRecord?.startRecording()
-                isListening = true
-
-                val buffer = ShortArray(frameLength)
-                while (isListening) {
-                    val read = audioRecord?.read(buffer, 0, frameLength) ?: 0
-                    if (read == frameLength) {
-                        val keywordIndex = porcupine?.process(buffer) ?: -1
-                        if (keywordIndex >= 0) {
-                            mainHandler.post {
-                                val expandedPanel = bubbleView?.findViewById<LinearLayout>(R.id.expanded_panel)
-                                val bubbleIcon = bubbleView?.findViewById<ImageView>(R.id.bubble_icon)
-                                if (!isExpanded) {
-                                    toggleExpanded(expandedPanel, bubbleIcon)
-                                }
-                                launchVoiceCommand()
+                    override fun onResults(results: Bundle?) {
+                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        val text = matches?.firstOrNull()?.lowercase() ?: ""
+                        if (text.contains("hey ahri") || text.contains("hi ahri") || text.contains("ahri")) {
+                            val expandedPanel = bubbleView?.findViewById<LinearLayout>(R.id.expanded_panel)
+                            val bubbleIcon = bubbleView?.findViewById<ImageView>(R.id.bubble_icon)
+                            if (!isExpanded) {
+                                toggleExpanded(expandedPanel, bubbleIcon)
                             }
+                            launchVoiceCommand()
+                        }
+                        if (isListening) {
+                            mainHandler.postDelayed({ startWakeWordDetection() }, 500)
                         }
                     }
+
+                    override fun onPartialResults(partialResults: Bundle?) {
+                        val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        val text = matches?.firstOrNull()?.lowercase() ?: ""
+                        if (text.contains("hey ahri") || text.contains("hi ahri") || text.contains("ahri")) {
+                            val expandedPanel = bubbleView?.findViewById<LinearLayout>(R.id.expanded_panel)
+                            val bubbleIcon = bubbleView?.findViewById<ImageView>(R.id.bubble_icon)
+                            if (!isExpanded) {
+                                toggleExpanded(expandedPanel, bubbleIcon)
+                            }
+                            launchVoiceCommand()
+                        }
+                    }
+
+                    override fun onError(error: Int) {
+                        if (isListening) {
+                            mainHandler.postDelayed({ startWakeWordDetection() }, 1000)
+                        }
+                    }
+
+                    override fun onEvent(eventType: Int, params: Bundle?) {}
+                })
+
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 }
+
+                isListening = true
+                speechRecognizer?.startListening(intent)
             } catch (e: Exception) {
-                // Graceful fallback if access key is not set or mic unavailable
+                // Ignore if mic unavailable
             }
-        }.start()
+        }
     }
 
     private fun toggleExpanded(panel: LinearLayout?, bubble: ImageView?) {
@@ -202,12 +200,9 @@ class FloatingBubbleService : Service() {
         super.onDestroy()
         isListening = false
         try {
-            audioRecord?.stop()
-            audioRecord?.release()
+            speechRecognizer?.destroy()
         } catch (e: Exception) {}
-        try {
-            porcupine?.delete()
-        } catch (e: Exception) {}
+        speechRecognizer = null
         bubbleView?.let { windowManager.removeView(it) }
     }
 }
