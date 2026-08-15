@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content">
+
+    <!-- Collapsed bubble -->
+    <ImageView
+        android:id="@+id/bubble_icon"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:src="@drawable/ic_bubble"
+        android:background="@drawable/circle_background"
+        android:padding="12dp"
+        android:elevation="8dp" />
+
+    <!-- Expanded panel -->
+    <LinearLayout
+        android:id="@+id/expanded_panel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:visibility="gone"
+        android:layout_gravity="center_vertical"
+        android:layout_marginStart="64dp"
+        android:background="@drawable/panel_background"
+        android:padding="8dp">
+
+        <ImageView
+            android:id="@+id/btn_mic"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:src="@drawable/ic_mic"
+            android:padding="10dp"
+            android:background="?attr/selectableItemBackgroundBorderless" />
+
+        <ImageView
+            android:id="@+id/btn_open"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:src="@drawable/ic_open"
+            android:padding="10dp"
+            android:background="?attr/selectableItemBackgroundBorderless" />
+
+        <ImageView
+            android:id="@+id/btn_close"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:src="@drawable/ic_close"
+            android:padding="10dp"
+            android:background="?attr/selectableItemBackgroundBorderless" />
+    </LinearLayout>
+</FrameLayout>

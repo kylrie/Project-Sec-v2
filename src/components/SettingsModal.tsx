@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { VoiceSettings, FridayPersonality } from '../types/friday';
-import { X, Mic, Volume2, Sliders, Sparkles, Globe, Keyboard, Check, VolumeX } from 'lucide-react';
+import { X, Mic, Volume2, Sliders, Sparkles, Globe, Keyboard, Check, VolumeX, Layers, Smartphone } from 'lucide-react';
 import { soundEffects } from '../services/audioEffects';
+import { Overlay } from '../client/plugins/Overlay';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -22,10 +23,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [localSettings, setLocalSettings] = useState<VoiceSettings>(settings);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [bubbleEnabled, setBubbleEnabled] = useState(false);
+  const [isCheckingBubble, setIsCheckingBubble] = useState(false);
+  const isAndroidNative = Overlay.isAvailable();
 
   useEffect(() => {
     setLocalSettings(settings);
   }, [settings]);
+
+  useEffect(() => {
+    if (isAndroidNative && isOpen) {
+      Overlay.isBubbleVisible().then((res) => {
+        setBubbleEnabled(res.visible);
+      });
+    }
+  }, [isOpen, isAndroidNative]);
+
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -40,11 +53,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   if (!isOpen) return null;
 
+  const handleToggleBubble = async () => {
+    setIsCheckingBubble(true);
+    try {
+      if (!bubbleEnabled) {
+        const perm = await Overlay.checkPermission();
+        if (!perm.granted) {
+          await Overlay.requestPermission();
+          setIsCheckingBubble(false);
+          return;
+        }
+        const res = await Overlay.showBubble();
+        setBubbleEnabled(res.success);
+      } else {
+        const res = await Overlay.hideBubble();
+        if (res.success) {
+          setBubbleEnabled(false);
+        }
+      }
+    } catch (e) {
+      console.error('Error toggling bubble:', e);
+    } finally {
+      setIsCheckingBubble(false);
+    }
+  };
+
   const handleSave = () => {
     soundEffects.playAcknowledge();
     onSaveSettings(localSettings);
     onClose();
   };
+
 
   const handleTestTTS = () => {
     const testPhrase = `Voice calibration confirmed. I am operating with ${localSettings.personality} executive protocols, speaking at rate ${localSettings.rate.toFixed(2)}.`;
@@ -270,7 +309,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Android Floating Overlay Bubble System Feature */}
+          <div className="p-4 rounded-xl bg-gradient-to-r from-sky-950/40 via-zinc-900/60 to-zinc-900/40 border border-sky-500/30 flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="p-2.5 bg-sky-500/20 text-sky-400 rounded-xl">
+                <Smartphone className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h4 className="text-xs font-bold text-zinc-100 uppercase tracking-wider font-mono">
+                    System Floating Overlay Bubble
+                  </h4>
+                  <span className="px-1.5 py-0.5 text-[9px] font-semibold bg-sky-500/20 text-sky-300 rounded border border-sky-500/30 uppercase">
+                    Android
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  Always-on-top chat head. Tap mic to trigger Ahri anytime over other apps.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={isCheckingBubble}
+              onClick={handleToggleBubble}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all shadow-md ${
+                bubbleEnabled
+                  ? 'bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30'
+                  : 'bg-sky-600 hover:bg-sky-500 text-white shadow-[0_0_15px_rgba(14,165,233,0.3)]'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>{bubbleEnabled ? 'Hide Overlay' : 'Enable Floating Bubble'}</span>
+            </button>
+          </div>
         </div>
+
 
         {/* Modal Footer */}
         <div className="flex items-center justify-between px-6 py-3 border-t border-zinc-800 bg-zinc-900/40">

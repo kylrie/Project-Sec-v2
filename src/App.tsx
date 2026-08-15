@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+
 import { 
   Settings, 
   Shield, 
@@ -148,7 +149,21 @@ export default function App() {
     onLocalAction: handleLocalAction,
   });
 
+  // Handle native Android floating bubble voice command intent
+  useEffect(() => {
+    const handleVoiceTrigger = () => {
+      console.log('[Ahri Native] Received floating bubble mic trigger');
+      startManualListening();
+    };
+
+    window.addEventListener('ahri-voice-trigger', handleVoiceTrigger);
+    return () => {
+      window.removeEventListener('ahri-voice-trigger', handleVoiceTrigger);
+    };
+  }, [startManualListening]);
+
   const handleCoreClick = () => {
+
     if (state === 'speaking') {
       interrupt();
     } else if (state === 'listening') {
