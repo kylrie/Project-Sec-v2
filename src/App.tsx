@@ -27,7 +27,8 @@ import { CommandOverlay } from './components/CommandOverlay';
 import { TimersAndTasks } from './components/TimersAndTasks';
 import { ExecutiveSchedule } from './components/ExecutiveSchedule';
 import { SettingsModal } from './components/SettingsModal';
-import { WakeWordIndicator } from './components/WakeWordIndicator';
+import { WakeWordIndicator } from './client/components/WakeWordIndicator';
+
 
 
 // Heavy 3D Visualizer & Executive Sub-Hubs (Lazy loaded for instant initial render)
