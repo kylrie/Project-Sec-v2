@@ -4,6 +4,7 @@ import { X, Mic, Volume2, Sliders, Sparkles, Globe, Keyboard, Check, VolumeX, La
 
 import { soundEffects } from '../services/audioEffects';
 import { Overlay } from '../client/plugins/Overlay';
+import { WakeWord } from '../client/plugins/WakeWord';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -25,8 +26,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [localSettings, setLocalSettings] = useState<VoiceSettings>(settings);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [bubbleEnabled, setBubbleEnabled] = useState(false);
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
   const [isCheckingBubble, setIsCheckingBubble] = useState(false);
   const isAndroidNative = Overlay.isAvailable();
+
 
   useEffect(() => {
     setLocalSettings(settings);
@@ -79,7 +82,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  const handleToggleWakeWord = async () => {
+    try {
+      if (!wakeWordEnabled) {
+        const accessKey = (import.meta as any).env?.VITE_PICOVOICE_ACCESS_KEY || '';
+        await WakeWord.initialize({ accessKey });
+        await WakeWord.startListening();
+        setWakeWordEnabled(true);
+      } else {
+        await WakeWord.stopListening();
+        setWakeWordEnabled(false);
+      }
+    } catch (e) {
+      console.warn('Error toggling native wake word:', e);
+    }
+  };
+
   const handleSave = () => {
+
     soundEffects.playAcknowledge();
     onSaveSettings(localSettings);
     onClose();
@@ -345,6 +365,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span>{bubbleEnabled ? 'Hide Overlay' : 'Enable Floating Bubble'}</span>
             </button>
           </div>
+
+          {/* Always-On Wake Word Detection (Picovoice Porcupine) */}
+          <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-950/40 via-zinc-900/60 to-zinc-900/40 border border-emerald-500/30 flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl">
+                <Mic className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h4 className="text-xs font-bold text-zinc-100 uppercase tracking-wider font-mono">
+                    Always-On "Hey Ahri" Wake Word
+                  </h4>
+                  <span className="px-1.5 py-0.5 text-[9px] font-semibold bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30 uppercase">
+                    Picovoice Local
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  Hands-free local voice activation. Say "Hey Ahri" to trigger listening without pressing a button.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleWakeWord}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all shadow-md ${
+                wakeWordEnabled
+                  ? 'bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]'
+              }`}
+            >
+              <Mic className="w-3.5 h-3.5" />
+              <span>{wakeWordEnabled ? 'Disable Wake Word' : 'Enable Wake Word'}</span>
+            </button>
+          </div>
+
 
           {/* Windows Desktop Always-On-Top Mini Mode */}
           <div className="p-4 rounded-xl bg-gradient-to-r from-purple-950/30 via-zinc-900/60 to-zinc-900/40 border border-purple-500/30 flex items-center justify-between">

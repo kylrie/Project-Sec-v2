@@ -27,6 +27,8 @@ import { CommandOverlay } from './components/CommandOverlay';
 import { TimersAndTasks } from './components/TimersAndTasks';
 import { ExecutiveSchedule } from './components/ExecutiveSchedule';
 import { SettingsModal } from './components/SettingsModal';
+import { WakeWordIndicator } from './components/WakeWordIndicator';
+
 
 // Heavy 3D Visualizer & Executive Sub-Hubs (Lazy loaded for instant initial render)
 const AhriVisualizer = lazy(() => import('./components/AhriVisualizer'));
@@ -499,6 +501,11 @@ export default function App() {
         </div>
       )}
 
+      {/* Always-on Wake Word floating HUD indicator */}
+      <WakeWordIndicator />
+
     </div>
   );
 }
+
+
