@@ -1,14 +1,21 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { WebSocketServer, WebSocket } from "ws";
 import http from "http";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
+import { initDatabase, dbRepository } from "./src/server/db/database.js";
+import { secretaryBrain } from "./src/server/ai/secretaryBrain.js";
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
   
+  // Initialize SQLite Database Tables & Seeds
+  initDatabase();
+  console.log("[FRIDAY Database] SQLite Neural Storage Initialized with 11 Tables.");
+
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: "/live" });
 
@@ -18,7 +25,7 @@ async function startServer() {
   const clients = new Set<WebSocket>();
   wss.on("connection", (ws) => {
     clients.add(ws);
-    ws.send(JSON.stringify({ type: "SYSTEM_READY", message: "FRIDAY Neural Core Online", timestamp: Date.now() }));
+    ws.send(JSON.stringify({ type: "SYSTEM_READY", message: "FRIDAY Neural Core & SQLite Brain Online", timestamp: Date.now() }));
     
     ws.on("message", async (rawMessage) => {
       try {
@@ -41,104 +48,89 @@ async function startServer() {
     res.json({
       status: "operational",
       system: "FRIDAY Executive Assistant Core",
-      version: "2.4.0-enterprise",
+      engine: "OpenAI GPT-4o + SQLite Neural Storage",
+      version: "3.0.0-enterprise",
       uptime: process.uptime(),
       timestamp: new Date().toISOString()
     });
   });
 
-  // Intent parsing and conversational AI
+  // Intent parsing and conversational AI powered by OpenAI GPT-4o & SQLite Memory
   app.post("/api/command", async (req, res) => {
-    const startTime = Date.now();
     try {
-      const { message, context = [], personality = "professional", userTimezone = "UTC" } = req.body;
-      const key = process.env.GEMINI_API_KEY;
+      const { message, sessionId = "default", personality = "professional", userTimezone = "UTC" } = req.body;
       
-      if (!key) {
-        return res.status(500).json({ error: "GEMINI_API_KEY is not configured in the environment." });
-      }
-
-      const ai = new GoogleGenAI({ apiKey: key });
-      
-      const personalityInstructions: Record<string, string> = {
-        professional: "You are FRIDAY, Tony Stark's executive AI secretary. Be impeccably professional, highly competent, calm, and concise. Speak as a trusted right-hand executive assistant.",
-        concise: "You are FRIDAY. Be ultra-compact, telegraphic, and direct. Answer in 1-2 sharp sentences. No filler words.",
-        warm: "You are FRIDAY. Be warm, attentive, helpful, and courteous while maintaining executive efficiency.",
-        executive: "You are FRIDAY, Chief of Staff AI. Prioritize actionable outcomes, calendar impacts, and decisive next steps."
-      };
-
-      const systemPrompt = `${personalityInstructions[personality] || personalityInstructions.professional}
-You process natural speech commands for an executive with connected Google Workspace (Calendar, Gmail, Google Tasks, Contacts).
-The user's local timezone/time context is: ${userTimezone}.
-Current Server Time: ${new Date().toISOString()}.
-
-Analyze the user's input. Identify the intent and return a JSON object with:
-1. "intent": One of [
-   "get_time", "set_timer", "get_weather", "set_reminder", 
-   "schedule_event", "delete_event", "check_conflicts", "find_free_slots",
-   "summarize_emails", "draft_email", "send_email", "search_emails",
-   "create_task", "list_tasks", "complete_task",
-   "morning_briefing", "meeting_notes", "general_chat", "system_control"
-]
-2. "spokenReply": A concise, crisp natural text response strictly formatted for Text-To-Speech (NO markdown, no asterisks, no bullet points, no emojis).
-3. "actionData": Structured parameters for UI execution:
-   - For "set_timer": { durationSeconds: number, label: string }
-   - For "set_reminder": { task: string, time: string, priority: "low"|"medium"|"high" }
-   - For "schedule_event": { title: string, start: string, durationMinutes: number, attendee?: string, location?: string }
-   - For "draft_email": { to: string, subject: string, body: string }
-   - For "search_emails": { query: string }
-   - For "create_task": { title: string, due?: string }
-   - For "morning_briefing": { date: string }
-   - For "get_weather": { city: string, condition: string, tempF: number, tempC: number }
-   - For "general_chat": { topic: string }
-
-Return strictly valid JSON matching this schema.`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3.7-flash",
-        contents: [
-          ...context.slice(-6).map((c: any) => ({
-            role: c.role === "user" ? "user" : "model",
-            parts: [{ text: c.text }]
-          })),
-          {
-            role: "user",
-            parts: [{ text: message }]
-          }
-        ],
-        config: {
-          systemInstruction: systemPrompt,
-          responseMimeType: "application/json",
-        }
+      // Process with OpenAI GPT-4o Secretary Brain
+      const result = await secretaryBrain.processCommand({
+        message,
+        sessionId,
+        personality,
+        userTimezone
       });
 
-      const responseText = response.text || "{}";
-      let parsed;
-      try {
-        parsed = JSON.parse(responseText);
-      } catch {
-        parsed = {
-          intent: "general_chat",
-          spokenReply: responseText.replace(/[*#_`]/g, "").trim(),
-          actionData: {}
-        };
+      // Broadcast tool execution to active WebSocket clients for live UI feedback
+      if (result.toolsUsed && result.toolsUsed.length > 0) {
+        const broadcastMsg = JSON.stringify({
+          type: "AGENT_TOOL_EXECUTION",
+          tools: result.toolsUsed,
+          intent: result.intent,
+          timestamp: Date.now()
+        });
+        clients.forEach(c => {
+          if (c.readyState === WebSocket.OPEN) c.send(broadcastMsg);
+        });
       }
 
-      const executionLatencyMs = Date.now() - startTime;
       res.json({
-        ...parsed,
-        latencyMs: executionLatencyMs,
+        ...result,
         timestamp: new Date().toISOString()
       });
 
     } catch (error: any) {
-      console.error("Gemini API Error:", error);
+      console.error("AI Brain Processing Error:", error);
       res.status(500).json({ 
         error: "Failed to process command",
         spokenReply: "I encountered a processing anomaly, but local protocols remain active.",
         intent: "error"
       });
     }
+  });
+
+  // SQLite REST Endpoints for Direct Executive Data Access
+  app.get("/api/calendar", (req, res) => {
+    const date = req.query.date as string | undefined;
+    res.json(dbRepository.listCalendarEvents(date));
+  });
+
+  app.post("/api/calendar", (req, res) => {
+    res.json(dbRepository.createCalendarEvent(req.body));
+  });
+
+  app.get("/api/tasks", (req, res) => {
+    const status = (req.query.status as string) || "pending";
+    res.json(dbRepository.listTasks(status));
+  });
+
+  app.post("/api/tasks", (req, res) => {
+    res.json(dbRepository.createTask(req.body.title, req.body.dueDate, req.body.priority));
+  });
+
+  app.get("/api/emails", (req, res) => {
+    const unreadOnly = req.query.unreadOnly === "true";
+    res.json(dbRepository.listEmails(unreadOnly));
+  });
+
+  app.get("/api/memory", (req, res) => {
+    res.json(dbRepository.getMemoryFacts(20));
+  });
+
+  app.post("/api/memory", (req, res) => {
+    res.json(dbRepository.saveMemoryFact(req.body.key, req.body.value, req.body.category));
+  });
+
+  app.get("/api/conversations", (req, res) => {
+    const sessionId = (req.query.sessionId as string) || "default";
+    res.json(dbRepository.getRecentConversations(sessionId, 20));
   });
 
   // Dedicated Meeting Minutes Summarizer API (Comprehensive Executive Deliverable)
