@@ -73,91 +73,99 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
 
     try {
       isSettingUpMicRef.current = true;
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) {
         isSettingUpMicRef.current = false;
         return;
       }
 
-      if (audioContextRef.current) {
-        if (audioContextRef.current.state === 'suspended') {
-          await audioContextRef.current.resume().catch(() => {});
-        }
-        if (audioContextRef.current.state === 'running') {
-          setIsMicAvailable(true);
-          isSettingUpMicRef.current = false;
-          return;
-        }
-      }
-
+      // 1. Ensure media stream is active
       if (!micStreamRef.current || !micStreamRef.current.active) {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
           micStreamRef.current = stream;
         } catch (e: any) {
-          console.warn('[VoiceEngine] Microphone access not yet granted or busy:', e.message);
+          console.warn('[VoiceEngine] Microphone access not yet granted or busy:', e?.message);
           isSettingUpMicRef.current = false;
           return;
         }
       }
 
-      if (audioContextRef.current) {
+      // 2. Reuse or create singleton AudioContext gracefully
+      let ctx = audioContextRef.current;
+      if (!ctx || ctx.state === 'closed') {
         try {
-          await audioContextRef.current.close();
-        } catch {}
+          ctx = new AudioCtx();
+          audioContextRef.current = ctx;
+        } catch (ctxErr) {
+          console.warn('[VoiceEngine] AudioContext creation notice:', ctxErr);
+          isSettingUpMicRef.current = false;
+          return;
+        }
       }
 
-      const ctx = new AudioCtx();
-      if (ctx.state === 'suspended') {
+      if (ctx && ctx.state === 'suspended') {
         await ctx.resume().catch(() => {});
       }
-      audioContextRef.current = ctx;
 
-      const source = ctx.createMediaStreamSource(micStreamRef.current);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 32;
-      analyser.smoothingTimeConstant = 0.8;
-      source.connect(analyser);
-      analyserRef.current = analyser;
+      // If analyser is already connected and running, avoid duplicate nodes
+      if (analyserRef.current && ctx.state === 'running') {
+        setIsMicAvailable(true);
+        isSettingUpMicRef.current = false;
+        return;
+      }
 
-      // Initialize Voice Activity Detection (VAD) with 1.5s automatic silence cut-off
-      if (!vadServiceRef.current) {
-        vadServiceRef.current = new VADService({
-          silenceTimeoutMs: 1500,
-          energyThreshold: 0.022,
-          onSpeechEnd: () => {
-            if (isListeningIntentRef.current) {
-              const pendingText = (transcriptRef.current || interimTranscriptRef.current).trim();
-              if (pendingText) {
-                console.log('[VAD] 1.5s Silence detected. Auto-submitting spoken command:', pendingText);
-                isListeningIntentRef.current = false;
-                processCommandRef.current(pendingText);
+      try {
+        const source = ctx.createMediaStreamSource(micStreamRef.current);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 32;
+        analyser.smoothingTimeConstant = 0.8;
+        source.connect(analyser);
+        analyserRef.current = analyser;
+
+        // Initialize Voice Activity Detection (VAD) with 1.5s automatic silence cut-off
+        if (!vadServiceRef.current) {
+          vadServiceRef.current = new VADService({
+            silenceTimeoutMs: 1500,
+            energyThreshold: 0.022,
+            onSpeechEnd: () => {
+              if (isListeningIntentRef.current) {
+                const pendingText = (transcriptRef.current || interimTranscriptRef.current).trim();
+                if (pendingText) {
+                  console.log('[VAD] 1.5s Silence detected. Auto-submitting spoken command:', pendingText);
+                  isListeningIntentRef.current = false;
+                  processCommandRef.current(pendingText);
+                }
               }
             }
-          }
-        });
+          });
+        }
+        vadServiceRef.current.start(micStreamRef.current, ctx);
+      } catch (nodeErr) {
+        console.warn('[VoiceEngine] MediaStream node setup notice:', nodeErr);
       }
-      vadServiceRef.current.start(micStreamRef.current, ctx);
 
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const dataArray = new Uint8Array(analyserRef.current ? analyserRef.current.frequencyBinCount : 16);
 
       // Throttled waveform updater (15fps max into React to prevent UI main-thread freezing!)
       const updateWaveform = () => {
         if (analyserRef.current) {
-          analyserRef.current.getByteFrequencyData(dataArray);
-          const now = performance.now();
-          if (now - lastStateUpdateTimeRef.current > 66) { // ~15 FPS max
-            lastStateUpdateTimeRef.current = now;
-            let sum = 0;
-            const barValues: number[] = [];
-            for (let i = 0; i < dataArray.length; i++) {
-              sum += dataArray[i];
-              barValues.push(dataArray[i] / 255);
+          try {
+            analyserRef.current.getByteFrequencyData(dataArray);
+            const now = performance.now();
+            if (now - lastStateUpdateTimeRef.current > 66) { // ~15 FPS max
+              lastStateUpdateTimeRef.current = now;
+              let sum = 0;
+              const barValues: number[] = [];
+              for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+                barValues.push(dataArray[i] / 255);
+              }
+              const avg = sum / dataArray.length / 255;
+              setAudioLevel(avg);
+              setFrequencies(barValues);
             }
-            const avg = sum / dataArray.length / 255;
-            setAudioLevel(avg);
-            setFrequencies(barValues);
-          }
+          } catch {}
         }
         animFrameRef.current = requestAnimationFrame(updateWaveform);
       };
@@ -171,6 +179,8 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       isSettingUpMicRef.current = false;
     }
   }, []);
+
+
 
   // Barge-In & Speech Interrupter
   const interrupt = useCallback(() => {
