@@ -16,6 +16,10 @@ import { secretaryBrain } from "./src/server/ai/secretaryBrain.js";
 import { calendarRouter } from "./src/server/routes/calendar.js";
 import { tasksRouter } from "./src/server/routes/tasks.js";
 import { userRouter } from "./src/server/routes/user.js";
+import { deviceRouter } from "./src/server/routes/devices.js";
+import { proactiveRouter } from "./src/server/routes/proactive.js";
+import { registerDeviceWs, unregisterDeviceWs } from "./src/server/services/meshService.js";
+
 
 async function startServer() {
   const app = express();
@@ -61,12 +65,13 @@ async function startServer() {
   app.use(express.json());
 
 
-  // Authenticated WebSocket clients
-  const clients = new Map<WebSocket, { userId?: string }>();
+  // Authenticated WebSocket clients & Cross-Device Mesh Registry
+  const clients = new Map<WebSocket, { userId?: string; deviceName?: string }>();
   wss.on("connection", async (ws, req) => {
     const parsedUrl = url.parse(req.url || "", true);
     const token = parsedUrl.query.token as string | undefined;
-    let authenticatedUserId = "anonymous";
+    const deviceName = (parsedUrl.query.deviceName as string) || (parsedUrl.query.device as string) || "web_client";
+    let authenticatedUserId = "dev-user-001";
 
     if (token && adminAuth) {
       try {
@@ -78,11 +83,14 @@ async function startServer() {
       }
     }
 
-    clients.set(ws, { userId: authenticatedUserId });
+    clients.set(ws, { userId: authenticatedUserId, deviceName });
+    registerDeviceWs(authenticatedUserId, deviceName, ws);
+
     ws.send(JSON.stringify({ 
       type: "SYSTEM_READY", 
-      message: "Project Ahri Neural Core, Supabase Realtime & SQLite Brain Online", 
+      message: "Project Ahri Neural Core, Cross-Device Mesh & SQLite Brain Online", 
       userId: authenticatedUserId,
+      deviceName,
       timestamp: Date.now() 
     }));
     
@@ -91,6 +99,11 @@ async function startServer() {
         const payload = JSON.parse(rawMessage.toString());
         if (payload.type === "PING") {
           ws.send(JSON.stringify({ type: "PONG", clientTimestamp: payload.timestamp, serverTimestamp: Date.now() }));
+        } else if (payload.type === "REGISTER_DEVICE") {
+          const newName = payload.deviceName || deviceName;
+          registerDeviceWs(authenticatedUserId, newName, ws);
+          clients.set(ws, { userId: authenticatedUserId, deviceName: newName });
+          ws.send(JSON.stringify({ type: "DEVICE_REGISTERED", deviceName: newName, timestamp: Date.now() }));
         }
       } catch (err) {
         console.error("WS error:", err);
@@ -98,6 +111,7 @@ async function startServer() {
     });
 
     ws.on("close", () => {
+      unregisterDeviceWs(authenticatedUserId, deviceName);
       clients.delete(ws);
     });
   });
@@ -106,6 +120,9 @@ async function startServer() {
   app.use("/api/calendar", calendarRouter);
   app.use("/api/tasks", tasksRouter);
   app.use("/api/user", userRouter);
+  app.use("/api/devices", deviceRouter);
+  app.use("/api/proactive", proactiveRouter);
+
 
   // Dynamic public config for Firebase Messaging Service Worker
   app.get("/api/config/firebase", (req, res) => {

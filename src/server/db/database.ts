@@ -149,7 +149,40 @@ export function initDatabase() {
       value TEXT NOT NULL,
       updated_at INTEGER NOT NULL
     );
+
+    -- 12. Cross-Device Neural Mesh Nodes
+    CREATE TABLE IF NOT EXISTS device_nodes (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      device_name TEXT NOT NULL,
+      device_type TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      local_ip TEXT,
+      ws_connected INTEGER DEFAULT 0,
+      last_seen INTEGER NOT NULL,
+      capabilities TEXT DEFAULT '[]',
+      metadata TEXT DEFAULT '{}',
+      created_at INTEGER NOT NULL,
+      UNIQUE(user_id, device_name)
+    );
+
+    -- 13. Proactive Executive Suggestions
+    CREATE TABLE IF NOT EXISTS proactive_suggestions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      urgency TEXT NOT NULL DEFAULT 'medium',
+      category TEXT NOT NULL DEFAULT 'calendar',
+      action_intent TEXT,
+      action_payload TEXT DEFAULT '{}',
+      spoken_prompt TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      expires_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
   `);
+
 
   // Run seed data in dev by default; opt-out with SEED_DEMO_DATA=false
   if (process.env.NODE_ENV !== 'production' && process.env.SEED_DEMO_DATA !== 'false') {
@@ -524,5 +557,121 @@ export const dbRepository = {
     `);
     stmt.run(id, task, dueTime, priority, Date.now());
     return { id, task, dueTime, priority };
+  },
+
+  // 12. Device Mesh Nodes
+  upsertDeviceNode: (userId: string, node: {
+    deviceName: string;
+    deviceType: string;
+    platform: string;
+    localIp?: string;
+    capabilities?: string[];
+    metadata?: any;
+  }) => {
+    const id = `dev-${Math.random().toString(36).substring(2, 9)}`;
+    const now = Date.now();
+    const stmt = db.prepare(`
+      INSERT INTO device_nodes (id, user_id, device_name, device_type, platform, local_ip, ws_connected, last_seen, capabilities, metadata, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+      ON CONFLICT(user_id, device_name) DO UPDATE SET
+        device_type = excluded.device_type,
+        platform = excluded.platform,
+        local_ip = excluded.local_ip,
+        ws_connected = 1,
+        last_seen = excluded.last_seen,
+        capabilities = excluded.capabilities,
+        metadata = excluded.metadata
+    `);
+    stmt.run(
+      id,
+      userId,
+      node.deviceName,
+      node.deviceType,
+      node.platform,
+      node.localIp || null,
+      now,
+      JSON.stringify(node.capabilities || []),
+      JSON.stringify(node.metadata || {}),
+      now
+    );
+    const getStmt = db.prepare(`SELECT * FROM device_nodes WHERE user_id = ? AND device_name = ?`);
+    const row: any = getStmt.get(userId, node.deviceName);
+    if (row) {
+      row.capabilities = JSON.parse(row.capabilities || '[]');
+      row.metadata = JSON.parse(row.metadata || '{}');
+      row.ws_connected = Boolean(row.ws_connected);
+    }
+    return row;
+  },
+
+  listDeviceNodes: (userId: string) => {
+    const stmt = db.prepare(`SELECT * FROM device_nodes WHERE user_id = ? ORDER BY last_seen DESC`);
+    const rows: any[] = stmt.all(userId);
+    return rows.map(r => ({
+      ...r,
+      capabilities: JSON.parse(r.capabilities || '[]'),
+      metadata: JSON.parse(r.metadata || '{}'),
+      ws_connected: Boolean(r.ws_connected)
+    }));
+  },
+
+  updateDeviceNodeStatus: (userId: string, deviceName: string, connected: boolean) => {
+    const stmt = db.prepare(`UPDATE device_nodes SET ws_connected = ?, last_seen = ? WHERE user_id = ? AND device_name = ?`);
+    stmt.run(connected ? 1 : 0, Date.now(), userId, deviceName);
+  },
+
+  // 13. Proactive Suggestions
+  saveProactiveSuggestion: (userId: string, suggestion: {
+    title: string;
+    description: string;
+    urgency?: string;
+    category?: string;
+    actionIntent?: string;
+    actionPayload?: any;
+    spokenPrompt?: string;
+    expiresAt?: number;
+  }) => {
+    const id = `sug-${Math.random().toString(36).substring(2, 9)}`;
+    const now = Date.now();
+    const stmt = db.prepare(`
+      INSERT INTO proactive_suggestions (id, user_id, title, description, urgency, category, action_intent, action_payload, spoken_prompt, status, expires_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+    `);
+    stmt.run(
+      id,
+      userId,
+      suggestion.title,
+      suggestion.description,
+      suggestion.urgency || 'medium',
+      suggestion.category || 'calendar',
+      suggestion.actionIntent || null,
+      JSON.stringify(suggestion.actionPayload || {}),
+      suggestion.spokenPrompt || null,
+      suggestion.expiresAt || null,
+      now
+    );
+    return { id, userId, ...suggestion, status: 'active', createdAt: now };
+  },
+
+  listProactiveSuggestions: (userId: string, status: string = 'active') => {
+    const stmt = db.prepare(`SELECT * FROM proactive_suggestions WHERE user_id = ? AND status = ? ORDER BY created_at DESC LIMIT 10`);
+    const rows: any[] = stmt.all(userId, status);
+    return rows.map(r => ({
+      ...r,
+      action_payload: JSON.parse(r.action_payload || '{}')
+    }));
+  },
+
+  dismissProactiveSuggestion: (userId: string, id: string) => {
+    const stmt = db.prepare(`UPDATE proactive_suggestions SET status = 'dismissed' WHERE user_id = ? AND id = ?`);
+    stmt.run(userId, id);
+    return { success: true };
+  },
+
+  executeProactiveSuggestion: (userId: string, id: string) => {
+    const stmt = db.prepare(`UPDATE proactive_suggestions SET status = 'executed' WHERE user_id = ? AND id = ?`);
+    stmt.run(userId, id);
+    return { success: true };
   }
 };
+

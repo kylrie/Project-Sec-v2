@@ -28,6 +28,9 @@ import { TimersAndTasks } from './components/TimersAndTasks';
 import { ExecutiveSchedule } from './components/ExecutiveSchedule';
 import { SettingsModal } from './components/SettingsModal';
 import { WakeWordIndicator } from './client/components/WakeWordIndicator';
+import { ProactiveSuggestionBanner } from './components/ProactiveSuggestionBanner';
+import { deviceMesh } from './client/services/deviceMesh';
+
 
 
 
@@ -149,6 +152,11 @@ export default function App() {
     onLocalAction: handleLocalAction,
   });
 
+  // Register device node in Cross-Device Neural Mesh
+  useEffect(() => {
+    deviceMesh.registerThisDevice().catch(() => {});
+  }, []);
+
   // Handle native Android floating bubble voice command intent
   useEffect(() => {
     const handleVoiceTrigger = () => {
@@ -234,8 +242,15 @@ export default function App() {
         </div>
       </header>
 
+      {/* Proactive Executive Suggestion Banner HUD */}
+      <ProactiveSuggestionBanner onExecuteAction={(intent, payload) => {
+        const query = payload?.meetingTitle ? `Briefing for ${payload.meetingTitle}` : payload?.taskTitle ? `Focus on ${payload.taskTitle}` : intent;
+        processCommand(query);
+      }} />
+
       {/* 2. THE HEART: UNCLIPPED EXPANSIVE 3D STARDUST ORB */}
       <main className="flex-1 w-full max-w-4xl mx-auto px-4 flex flex-col items-center justify-center z-10 my-auto">
+
         {/* 3D Quantum Orb Component */}
         <div className="w-full flex justify-center items-center">
           <Suspense fallback={

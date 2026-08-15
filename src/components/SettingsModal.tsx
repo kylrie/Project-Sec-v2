@@ -437,7 +437,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span>Toggle Mini Mode</span>
             </button>
           </div>
+
+          {/* Cross-Device Neural Mesh Status */}
+
+          <div className="p-4 rounded-xl bg-gradient-to-r from-sky-950/30 via-zinc-900/60 to-zinc-900/40 border border-sky-500/30 flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="p-2.5 bg-sky-500/20 text-sky-400 rounded-xl">
+                <Radio className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h4 className="text-xs font-bold text-zinc-100 uppercase tracking-wider font-mono">
+                    Cross-Device Neural Mesh
+                  </h4>
+                  <span className="px-1.5 py-0.5 text-[9px] font-semibold bg-sky-500/20 text-sky-300 rounded border border-sky-500/30 uppercase">
+                    Active Mesh
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  Synchronizes actions across Windows PC, Android phone/bubble, and smart devices via real-time WebSocket broker.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-mono font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-ping" />
+                Mesh Online
+              </span>
+            </div>
+          </div>
         </div>
+
 
 
 

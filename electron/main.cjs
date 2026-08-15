@@ -177,6 +177,47 @@ ipcMain.on('window-close', () => mainWindow?.close());
 ipcMain.on('toggle-devtools', () => mainWindow?.webContents.toggleDevTools());
 ipcMain.on('toggle-mini-mode', () => toggleMiniMode());
 
+// System-level Device Mesh IPC Handlers
+const { exec } = require('child_process');
+
+ipcMain.handle('system-shutdown', () => {
+  try {
+    exec('shutdown /s /t 60');
+    return { success: true, message: 'System shutdown initiated in 60s' };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('system-lock', () => {
+  try {
+    exec('rundll32.exe user32.dll,LockWorkStation');
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('system-volume', (event, level) => {
+  try {
+    const vol = Math.max(0, Math.min(100, level || 50));
+    exec(`powershell -c "(New-Object -ComObject WScript.Shell).SendKeys([char]174)"`);
+    return { success: true, level: vol };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('system-mute', () => {
+  try {
+    exec(`powershell -c "(New-Object -ComObject WScript.Shell).SendKeys([char]173)"`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+
 // Background wake word detection (Windows)
 let wakeWordProcess = null;
 

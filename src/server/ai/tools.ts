@@ -207,20 +207,36 @@ export const FRIDAY_TOOLS: ExecutableTool[] = [
       }
     }
   },
+  // 7. Cross-Device Neural Mesh & System Control
   {
     type: 'function',
     function: {
-      name: 'memory_recall_facts',
-      description: 'Retrieve long-term memory facts and stored executive preferences.',
+      name: 'mesh_send_device_command',
+      description: 'Transmit an action or command to another device in the user\'s neural mesh (e.g. shutdown PC, mute tablet, open URL, adjust volume, control smart lights).',
       parameters: {
         type: 'object',
         properties: {
-          limit: { type: 'number', description: 'Number of facts to retrieve' }
-        }
+          targetDevice: { type: 'string', description: 'Target device name or "all" (e.g. "windows_pc", "living_room_hub", "all")' },
+          command: { type: 'string', description: 'Command to execute (e.g. "shutdown", "set_volume", "open_url", "lock", "mute", "light_control")' },
+          params: { type: 'object', description: 'Parameters for the command (e.g. { level: 50 }, { url: "https://meet.google.com/xyz" })' }
+        },
+        required: ['command']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mesh_list_devices',
+      description: 'List all registered and active devices connected to the user\'s neural mesh network.',
+      parameters: {
+        type: 'object',
+        properties: {}
       }
     }
   }
 ];
+
 
 /**
  * Execute an OpenAI Tool Call against the SQLite Repository
@@ -345,6 +361,26 @@ export async function executeToolCall(toolName: string, args: any): Promise<{ re
         };
       }
 
+      case 'mesh_send_device_command': {
+        const { actionBroker } = await import('../services/actionBroker.js');
+        const brokerResult = await actionBroker.dispatchAction('dev-user-001', 'mesh_send_device_command', args);
+        return {
+          result: brokerResult,
+          intent: 'device_command',
+          actionData: brokerResult
+        };
+      }
+
+      case 'mesh_list_devices': {
+        const { actionBroker } = await import('../services/actionBroker.js');
+        const brokerResult = await actionBroker.dispatchAction('dev-user-001', 'mesh_list_devices', args);
+        return {
+          result: brokerResult,
+          intent: 'list_devices',
+          actionData: brokerResult
+        };
+      }
+
       default:
         return {
           result: { error: `Tool ${toolName} not recognized` },
@@ -352,6 +388,7 @@ export async function executeToolCall(toolName: string, args: any): Promise<{ re
           actionData: {}
         };
     }
+
   } catch (err: any) {
     console.error(`Error executing tool ${toolName}:`, err);
     return {
