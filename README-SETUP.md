@@ -28,7 +28,7 @@ Go to **Project Settings** -> **API**:
 ## 2. Firebase Setup (Authentication + Push Notifications)
 
 ### A. Web App & Credentials
-1. Go to [Firebase Console](https://console.firebase.google.com/) -> Select project `gen-lang-client-0699733118`.
+1. Go to [Firebase Console](https://console.firebase.google.com/) -> Select your Firebase project.
 2. Go to **Authentication** -> **Sign-in method** -> Enable **Google** and **Email/Password**.
 3. Go to **Project Settings** -> **General** -> **Your apps** -> Web App -> Copy configuration keys to `.env.local`.
 
@@ -51,29 +51,29 @@ NODE_ENV=development
 
 # Supabase
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_SERVICE_KEY=YOUR_SUPABASE_SERVICE_KEY_HERE
+SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY_HERE
 
 # Firebase Admin
-FIREBASE_PROJECT_ID=gen-lang-client-0699733118
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk-fbsvc@gen-lang-client-0699733118.iam.gserviceaccount.com
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+FIREBASE_PROJECT_ID=YOUR_FIREBASE_PROJECT_ID
+FIREBASE_CLIENT_EMAIL=YOUR_FIREBASE_CLIENT_EMAIL
+FIREBASE_PRIVATE_KEY="YOUR_FIREBASE_PRIVATE_KEY"
 
-# Gemini 3.7 Pro AI Brain
-GEMINI_API_KEY=AIzaSy...
+# Gemini AI Brain
+GEMINI_API_KEY=YOUR_GEMINI_API_KEY
 ```
 
 ### Client `.env.local`
 ```bash
 VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 
-VITE_FIREBASE_API_KEY=AIzaSyCKLXCdAsPlU7TFR7yFlTOL7mKMnsspvow
-VITE_FIREBASE_AUTH_DOMAIN=gen-lang-client-0699733118.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=gen-lang-client-0699733118
-VITE_FIREBASE_STORAGE_BUCKET=gen-lang-client-0699733118.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=189100351312
-VITE_FIREBASE_APP_ID=1:189100351312:web:1ea04173d96d62d2909655
+VITE_FIREBASE_API_KEY=YOUR_FIREBASE_API_KEY
+VITE_FIREBASE_AUTH_DOMAIN=YOUR_FIREBASE_AUTH_DOMAIN
+VITE_FIREBASE_PROJECT_ID=YOUR_FIREBASE_PROJECT_ID
+VITE_FIREBASE_STORAGE_BUCKET=YOUR_FIREBASE_STORAGE_BUCKET
+VITE_FIREBASE_MESSAGING_SENDER_ID=YOUR_FIREBASE_MESSAGING_SENDER_ID
+VITE_FIREBASE_APP_ID=YOUR_FIREBASE_APP_ID
 
 VITE_API_URL=http://localhost:3000
 VITE_WS_URL=ws://localhost:3000/live

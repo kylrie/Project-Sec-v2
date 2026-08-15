@@ -11,7 +11,7 @@ import { createClient } from '@supabase/supabase-js';
 import path from 'path';
 import fs from 'fs';
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://xnqfhjlqowjeepnygbdn.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
@@ -51,30 +51,21 @@ async function runMigration() {
     process.exit(1);
   }
 
-  // 1. Get or create default user in auth / profiles
+  // 1. Establish target user ID from existing profiles or authenticated users
   let targetUserId;
   const { data: existingProfiles } = await supabase.from('profiles').select('id').limit(1);
   if (existingProfiles && existingProfiles.length > 0) {
     targetUserId = existingProfiles[0].id;
   } else {
-    // If no profiles yet, check auth.users or create a placeholder profile
     const { data: authUsers } = await supabase.auth.admin.listUsers();
     if (authUsers && authUsers.users && authUsers.users.length > 0) {
       targetUserId = authUsers.users[0].id;
-    } else {
-      console.log('ℹ️  No auth users found in Supabase yet. Creating demo executive profile.');
-      const demoUser = await supabase.auth.admin.createUser({
-        email: 'tony.stark@enterprise.io',
-        password: 'TemporaryPassword123!',
-        email_confirm: true,
-        user_metadata: { full_name: 'Tony Stark' }
-      });
-      targetUserId = demoUser.data?.user?.id;
     }
   }
 
   if (!targetUserId) {
-    console.error('❌ Could not establish target user ID for migration.');
+    console.error('❌ ERROR: No user found in Supabase Auth or Profiles.');
+    console.error('👉 Please sign in to your application or create a user in Supabase Auth before running migration.');
     process.exit(1);
   }
 
@@ -97,7 +88,7 @@ async function runMigration() {
         description: evt.notes || null,
         start_time: startTime,
         end_time: endTime,
-        location: evt.location || 'Stark HQ',
+        location: evt.location || 'Executive HQ',
         attendees,
         status: evt.status || 'confirmed'
       });
@@ -143,7 +134,6 @@ async function runMigration() {
     for (const c of convos) {
       const actionData = c.action_data ? JSON.parse(c.action_data) : null;
       const toolsUsed = c.tools_used ? JSON.parse(c.tools_used) : [];
-
       const textContent = c.content || c.text || 'Action acknowledged.';
 
       const { error } = await supabase.from('conversations').insert({

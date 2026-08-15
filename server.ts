@@ -73,6 +73,22 @@ async function startServer() {
   app.use("/api/tasks", tasksRouter);
   app.use("/api/user", userRouter);
 
+  // Dynamic public config for Firebase Messaging Service Worker
+  app.get("/api/config/firebase", (req, res) => {
+    const projectId = process.env.FIREBASE_PROJECT_ID;
+    if (!projectId) {
+      return res.status(404).json({ error: "Firebase public configuration unconfigured" });
+    }
+    res.json({
+      projectId,
+      apiKey: process.env.FIREBASE_WEB_API_KEY || process.env.VITE_FIREBASE_API_KEY || "",
+      authDomain: `${projectId}.firebaseapp.com`,
+      storageBucket: `${projectId}.firebasestorage.app`,
+      messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "189100351312",
+      appId: process.env.FIREBASE_APP_ID || ""
+    });
+  });
+
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({

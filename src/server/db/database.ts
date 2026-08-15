@@ -151,11 +151,14 @@ export function initDatabase() {
     );
   `);
 
-  seedInitialData();
+  // Gate seed data behind an explicit development flag
+  if (process.env.NODE_ENV !== 'production' && process.env.SEED_DEMO_DATA === 'true') {
+    seedInitialData();
+  }
 }
 
 /**
- * Seed initial executive state if database is fresh
+ * Seed initial executive state if database is fresh (only in dev mode with SEED_DEMO_DATA=true)
  */
 function seedInitialData() {
   const eventCount = db.prepare('SELECT count(*) as count FROM calendar_events').get() as { count: number };
@@ -172,8 +175,8 @@ function seedInitialData() {
       start_time: '10:00 AM',
       end_time: '10:45 AM',
       date: 'Today',
-      location: 'Conference Room 4A / Google Meet',
-      attendees: JSON.stringify(['Sarah Jenkins', 'John Vance']),
+      location: 'Conference Room 4A / Virtual',
+      attendees: JSON.stringify(['Demo User 2', 'Demo User 3']),
       status: 'confirmed',
       created_at: now
     });
@@ -184,8 +187,8 @@ function seedInitialData() {
       start_time: '04:00 PM',
       end_time: '05:30 PM',
       date: 'Today',
-      location: 'Stark Boardroom',
-      attendees: JSON.stringify(['Marcus Reed (CFO)', 'Pepper Potts']),
+      location: 'Executive Boardroom',
+      attendees: JSON.stringify(['Demo User 4 (CFO)', 'Demo User 2']),
       status: 'confirmed',
       created_at: now
     });
@@ -197,7 +200,7 @@ function seedInitialData() {
       end_time: '03:00 PM',
       date: 'Tomorrow',
       location: 'Virtual Lab 1',
-      attendees: JSON.stringify(['Dr. Montgomery', 'Elena Rostova']),
+      attendees: JSON.stringify(['Demo User 3', 'Demo User 4']),
       status: 'confirmed',
       created_at: now
     });
@@ -213,11 +216,11 @@ function seedInitialData() {
     const now = Date.now();
     insertContact.run({
       id: 'cnt-1',
-      name: 'Pepper Potts',
-      email: 'pepper.potts@stark.com',
+      name: 'Demo User 2',
+      email: 'demo.user.2@example.com',
       phone: '+1 (555) 019-2834',
       role: 'Chief Executive Officer',
-      company: 'Stark Industries',
+      company: 'Demo Corp',
       is_vip: 1,
       notes: 'Direct bypass authorization for all urgent calendar items.',
       created_at: now
@@ -225,11 +228,11 @@ function seedInitialData() {
 
     insertContact.run({
       id: 'cnt-2',
-      name: 'Sarah Jenkins',
-      email: 'sarah.jenkins@enterprise.com',
+      name: 'Demo User 3',
+      email: 'demo.user.3@example.com',
       phone: '+1 (555) 384-9921',
       role: 'VP of Product',
-      company: 'Stark Enterprise',
+      company: 'Demo Enterprise',
       is_vip: 1,
       notes: 'Lead on Q3 Enterprise platform rollouts.',
       created_at: now
@@ -237,11 +240,11 @@ function seedInitialData() {
 
     insertContact.run({
       id: 'cnt-3',
-      name: 'Marcus Reed',
-      email: 'cfo@starkindustries.com',
+      name: 'Demo User 4',
+      email: 'demo.user.4@example.com',
       phone: '+1 (555) 912-4411',
       role: 'Chief Financial Officer',
-      company: 'Stark Industries',
+      company: 'Demo Corp',
       is_vip: 1,
       notes: 'Requires budget approvals by 5 PM.',
       created_at: now
@@ -317,12 +320,12 @@ function seedInitialData() {
     insertEmail.run({
       id: 'em-1',
       thread_id: 'th-1',
-      from_name: 'Sarah Jenkins',
-      from_email: 'sarah.jenkins@enterprise.com',
-      to_email: 'tony@starkindustries.com',
+      from_name: 'Demo User 3',
+      from_email: 'demo.user.3@example.com',
+      to_email: 'demo.user.1@example.com',
       subject: 'URGENT: Budget Approval Deadline Today at 5 PM',
-      body: 'Tony, we need your authorization on the finalized Q3 budget allocation before 5 PM today for committee circulation.',
-      snippet: 'Tony, we need your authorization on the finalized Q3 budget allocation...',
+      body: 'We need authorization on the finalized Q3 budget allocation before 5 PM today for committee circulation.',
+      snippet: 'We need authorization on the finalized Q3 budget allocation...',
       is_unread: 1,
       urgency: 'urgent',
       created_at: now - 900000
@@ -331,11 +334,11 @@ function seedInitialData() {
     insertEmail.run({
       id: 'em-2',
       thread_id: 'th-2',
-      from_name: 'John Vance',
-      from_email: 'john.vance@techlead.io',
-      to_email: 'tony@starkindustries.com',
+      from_name: 'Demo User 4',
+      from_email: 'demo.user.4@example.com',
+      to_email: 'demo.user.1@example.com',
       subject: 'Sync on neural voice architecture tomorrow',
-      body: 'Hey Tony, confirming our 2 PM sync tomorrow to review the low-latency WebGL voice engine metrics.',
+      body: 'Confirming our 2 PM sync tomorrow to review the low-latency WebGL voice engine metrics.',
       snippet: 'Confirming our 2 PM sync tomorrow to review neural voice metrics...',
       is_unread: 1,
       urgency: 'standard',
