@@ -1,5 +1,6 @@
 package com.project.ahri.overlay;
 
+import ai.picovoice.porcupine.Porcupine;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -7,8 +8,13 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.PixelFormat;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -36,6 +42,11 @@ public class FloatingBubbleService extends Service {
     private float initialTouchY = 0f;
     private boolean isExpanded = false;
 
+    private Porcupine porcupine = null;
+    private AudioRecord audioRecord = null;
+    private boolean isListening = false;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;
@@ -50,6 +61,8 @@ public class FloatingBubbleService extends Service {
 
         windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
         showBubble();
+
+        startWakeWordDetection();
     }
 
     private void createNotificationChannel() {
@@ -70,7 +83,7 @@ public class FloatingBubbleService extends Service {
     private Notification createNotification() {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Project Ahri Active")
-            .setContentText("Tap the floating bubble anytime to command Ahri")
+            .setContentText("Tap the floating bubble or say 'Hey Ahri' anytime")
             .setSmallIcon(R.drawable.ic_bubble)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true);
@@ -146,10 +159,7 @@ public class FloatingBubbleService extends Service {
             btnMic.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    Intent intent = new Intent(FloatingBubbleService.this, MainActivity.class);
-                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                    intent.putExtra("action", "voice_command");
-                    startActivity(intent);
+                    launchVoiceCommand();
                     toggleExpanded(expandedPanel, bubbleIcon);
                 }
             });
@@ -179,6 +189,84 @@ public class FloatingBubbleService extends Service {
         windowManager.addView(bubbleView, params);
     }
 
+    private void launchVoiceCommand() {
+        Intent intent = new Intent(FloatingBubbleService.this, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        intent.putExtra("action", "voice_command");
+        startActivity(intent);
+    }
+
+    private void startWakeWordDetection() {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String customPath = "hey-ahri_android.ppn";
+                    boolean hasCustomAsset = false;
+                    try {
+                        getAssets().open(customPath).close();
+                        hasCustomAsset = true;
+                    } catch (Exception ignored) {}
+
+                    String accessKey = "YOUR_PICOVOICE_ACCESS_KEY";
+                    Porcupine.Builder builder = new Porcupine.Builder().setAccessKey(accessKey);
+                    if (hasCustomAsset) {
+                        builder.setKeywordPaths(new String[]{customPath});
+                    } else {
+                        builder.setKeywords(new Porcupine.BuiltInKeyword[]{
+                            Porcupine.BuiltInKeyword.JARVIS,
+                            Porcupine.BuiltInKeyword.PORCUPINE
+                        });
+                    }
+
+                    porcupine = builder.build(FloatingBubbleService.this);
+                    final int sampleRate = porcupine.getSampleRate();
+                    final int frameLength = porcupine.getFrameLength();
+
+                    int minBufferSize = AudioRecord.getMinBufferSize(
+                        sampleRate,
+                        AudioFormat.CHANNEL_IN_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT
+                    );
+
+                    audioRecord = new AudioRecord(
+                        MediaRecorder.AudioSource.MIC,
+                        sampleRate,
+                        AudioFormat.CHANNEL_IN_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT,
+                        Math.max(minBufferSize, frameLength * 2)
+                    );
+
+                    audioRecord.startRecording();
+                    isListening = true;
+
+                    short[] buffer = new short[frameLength];
+                    while (isListening) {
+                        int read = (audioRecord != null) ? audioRecord.read(buffer, 0, frameLength) : 0;
+                        if (read == frameLength && porcupine != null) {
+                            int keywordIndex = porcupine.process(buffer);
+                            if (keywordIndex >= 0) {
+                                mainHandler.post(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        final ImageView bubbleIcon = (bubbleView != null) ? bubbleView.findViewById(R.id.bubble_icon) : null;
+                                        final LinearLayout expandedPanel = (bubbleView != null) ? bubbleView.findViewById(R.id.expanded_panel) : null;
+                                        if (!isExpanded) {
+                                            toggleExpanded(expandedPanel, bubbleIcon);
+                                        }
+                                        launchVoiceCommand();
+                                    }
+                                });
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {
+                    // Graceful fallback
+                }
+            }
+        }).start();
+    }
+
     private void toggleExpanded(LinearLayout panel, ImageView bubble) {
         if (panel == null || bubble == null) return;
         if (isExpanded) {
@@ -195,6 +283,19 @@ public class FloatingBubbleService extends Service {
     public void onDestroy() {
         super.onDestroy();
         isRunning = false;
+        isListening = false;
+        try {
+            if (audioRecord != null) {
+                audioRecord.stop();
+                audioRecord.release();
+            }
+        } catch (Exception ignored) {}
+        try {
+            if (porcupine != null) {
+                porcupine.delete();
+            }
+        } catch (Exception ignored) {}
+
         if (bubbleView != null && windowManager != null) {
             try {
                 windowManager.removeView(bubbleView);

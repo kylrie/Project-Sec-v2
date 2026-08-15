@@ -177,11 +177,63 @@ ipcMain.on('window-close', () => mainWindow?.close());
 ipcMain.on('toggle-devtools', () => mainWindow?.webContents.toggleDevTools());
 ipcMain.on('toggle-mini-mode', () => toggleMiniMode());
 
+// Background wake word detection (Windows)
+let wakeWordProcess = null;
+
+function startBackgroundWakeWord() {
+  if (process.env.DISABLE_WAKE_WORD === 'true') return;
+  const accessKey = process.env.PICOVOICE_ACCESS_KEY || process.env.VITE_PICOVOICE_ACCESS_KEY;
+  if (!accessKey) {
+    console.log('[WakeWord] No PICOVOICE_ACCESS_KEY found for background Node process. Renderer speech listening active.');
+    return;
+  }
+
+  try {
+    const { Porcupine, BuiltInKeyword } = require('@picovoice/porcupine-node');
+    const recorder = require('node-record-lpcm16');
+
+    const porcupine = new Porcupine(
+      accessKey,
+      [BuiltInKeyword.JARVIS, BuiltInKeyword.PORCUPINE],
+      [0.7, 0.7]
+    );
+
+    const mic = recorder.record({
+      sampleRate: porcupine.sampleRate,
+      channels: 1,
+      audioType: 'raw'
+    });
+
+    mic.stream().on('data', (data) => {
+      const frames = new Int16Array(data.buffer, data.byteOffset, data.length / 2);
+      for (let i = 0; i < frames.length; i += porcupine.frameLength) {
+        const frame = frames.slice(i, i + porcupine.frameLength);
+        if (frame.length === porcupine.frameLength) {
+          const keywordIndex = porcupine.process(frame);
+          if (keywordIndex !== -1) {
+            console.log('[WakeWord] Hey Ahri detected on Windows');
+            if (mainWindow) {
+              mainWindow.show();
+              mainWindow.focus();
+              mainWindow.webContents.send('wake-word-detected');
+            }
+          }
+        }
+      }
+    });
+
+    wakeWordProcess = mic;
+    console.log('[WakeWord] Background Porcupine listening initialized on Windows');
+  } catch (err) {
+    console.log('[WakeWord] Node native background listening skipped (renderer-level listening active):', err.message);
+  }
+}
 
 app.whenReady().then(async () => {
   await startBackend();
   createWindow();
   createTray();
+  startBackgroundWakeWord();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -196,4 +248,10 @@ app.on('will-quit', () => {
     console.log('[Electron] Terminating background backend process...');
     serverProcess.kill();
   }
+  if (wakeWordProcess && typeof wakeWordProcess.stop === 'function') {
+    try {
+      wakeWordProcess.stop();
+    } catch (e) {}
+  }
 });
+

@@ -9,6 +9,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleMiniMode: () => ipcRenderer.send('toggle-mini-mode'),
   onShortcut: (callback) => {
     ipcRenderer.on('hotkey-triggered', () => callback());
+  },
+  onWakeWordDetected: (callback) => {
+    ipcRenderer.on('wake-word-detected', (_event, ...args) => callback(...args));
   }
 });
+
 
