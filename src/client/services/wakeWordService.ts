@@ -1,4 +1,4 @@
-import { PorcupineWorker, BuiltInKeyword } from '@picovoice/porcupine-web';
+import { PorcupineWorker, BuiltInKeyword, PorcupineDetection } from '@picovoice/porcupine-web';
 import { WebVoiceProcessor } from '@picovoice/web-voice-processor';
 
 export interface WakeWordCallbacks {
@@ -27,9 +27,11 @@ export class WakeWordService {
         accessKey,
         [BuiltInKeyword.Jarvis, BuiltInKeyword.Porcupine],
         this.porcupineCallback,
-        (error: Error) => {
-          console.warn('[WakeWord] Porcupine internal error:', error);
-          this.callbacks.onError(error.message);
+        {
+          processErrorCallback: (error: Error) => {
+            console.warn('[WakeWord] Porcupine internal error:', error);
+            this.callbacks.onError(error.message);
+          }
         }
       );
       
@@ -41,11 +43,12 @@ export class WakeWordService {
     }
   }
 
-  private porcupineCallback = (keyword: string | number) => {
-    console.log('[WakeWord] "Hey Ahri" / keyword detected:', keyword);
+  private porcupineCallback = (detection: PorcupineDetection) => {
+    console.log('[WakeWord] "Hey Ahri" / keyword detected:', detection.label || detection.index);
     this.callbacks.onWakeWordDetected();
     this.startSpeechRecognition();
   };
+
 
   private startSpeechRecognition() {
     if (this.isListening) return;

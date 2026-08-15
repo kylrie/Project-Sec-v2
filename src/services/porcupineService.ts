@@ -3,7 +3,7 @@
  * On-device local wake word detection with graceful fallback.
  */
 
-import { PorcupineWorker, BuiltInKeyword } from '@picovoice/porcupine-web';
+import { PorcupineWorker, BuiltInKeyword, PorcupineDetection } from '@picovoice/porcupine-web';
 import { WebVoiceProcessor } from '@picovoice/web-voice-processor';
 
 export interface PorcupineServiceOptions {
@@ -47,19 +47,23 @@ export class PorcupineService {
       this.porcupineWorker = await PorcupineWorker.create(
         this.accessKey!,
         [BuiltInKeyword.Jarvis, BuiltInKeyword.Porcupine],
-        (keyword: string) => {
-          console.log(`[Porcupine] Wake word detected: ${keyword}`);
+        (detection: PorcupineDetection) => {
+          const keywordLabel = detection.label || `${detection.index}`;
+          console.log(`[Porcupine] Wake word detected: ${keywordLabel}`);
           if (this.onWakeWordDetected) {
-            this.onWakeWordDetected(keyword);
+            this.onWakeWordDetected(keywordLabel);
           }
         },
-        (error: Error) => {
-          console.warn('[Porcupine] Worker error:', error);
-          if (this.onError) {
-            this.onError(error);
+        {
+          processErrorCallback: (error: Error) => {
+            console.warn('[Porcupine] Worker error:', error);
+            if (this.onError) {
+              this.onError(error);
+            }
           }
         }
       );
+
 
       await WebVoiceProcessor.subscribe(this.porcupineWorker);
       this.isListening = true;
