@@ -3,17 +3,37 @@ import path from 'path';
 import fs from 'fs';
 
 // Initialize or connect to persistent SQLite Database
-const DB_DIR = path.resolve(process.cwd(), 'data');
-if (!fs.existsSync(DB_DIR)) {
-  fs.mkdirSync(DB_DIR, { recursive: true });
+function resolveDatabaseDirectory(): string {
+  if (process.env.AHRI_DATA_DIR && process.env.AHRI_DATA_DIR.trim().length > 0) {
+    return process.env.AHRI_DATA_DIR;
+  }
+  if (process.env.NODE_ENV === 'production' && process.env.APPDATA) {
+    return path.join(process.env.APPDATA, 'Project Ahri', 'data');
+  }
+  return path.resolve(process.cwd(), 'data');
 }
 
-const DB_PATH = path.join(DB_DIR, 'friday_brain.db');
+const DB_DIR = resolveDatabaseDirectory();
+try {
+  if (!fs.existsSync(DB_DIR)) {
+    fs.mkdirSync(DB_DIR, { recursive: true });
+  }
+} catch (dirErr) {
+  console.warn('[Database] Could not create target data directory:', DB_DIR, dirErr);
+}
+
+const DB_PATH = path.join(DB_DIR, 'ahri_brain.db');
+console.log(`[Project Ahri Database] Loading SQLite from: ${DB_PATH}`);
+
 export const db = new Database(DB_PATH);
 
 // Enable WAL mode for high concurrency and performance
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+try {
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+} catch (pragmaErr) {
+  console.warn('[Database] PRAGMA configuration notice:', pragmaErr);
+}
 
 /**
  * Initialize all database schemas

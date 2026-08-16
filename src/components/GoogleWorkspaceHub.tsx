@@ -62,9 +62,9 @@ export const GoogleWorkspaceHub: React.FC<GoogleWorkspaceHubProps> = ({
 
   // Email Drafter state
   const [isDrafting, setIsDrafting] = useState(false);
-  const [draftRecipient, setDraftRecipient] = useState('Sarah Jenkins');
-  const [draftSubject, setDraftSubject] = useState('Q3 Budget Deck Approval');
-  const [draftBody, setDraftBody] = useState('Hi Sarah,\n\nI have reviewed and approved the finalized Q3 budget figures. Please proceed with the audit committee circulation.\n\nBest regards,\nExecutive User');
+  const [draftRecipient, setDraftRecipient] = useState('');
+  const [draftSubject, setDraftSubject] = useState('');
+  const [draftBody, setDraftBody] = useState('');
   const [draftSentSuccess, setDraftSentSuccess] = useState(false);
   const [emailSearchQuery, setEmailSearchQuery] = useState('');
 
@@ -924,7 +924,7 @@ export const GoogleWorkspaceHub: React.FC<GoogleWorkspaceHubProps> = ({
                   onClick={() => {
                     setDraftRecipient(c.displayName);
                     setDraftSubject('Executive Sync');
-                    setDraftBody(`Hi ${c.displayName},\n\nHope all is well. Reaching out regarding our upcoming milestone.\n\nBest,\nTony`);
+                    setDraftBody(`Hi ${c.displayName},\n\nHope all is well. Reaching out regarding our upcoming milestone.\n\nBest regards,`);
                     setIsDrafting(true);
                     setActiveTab('gmail');
                   }}

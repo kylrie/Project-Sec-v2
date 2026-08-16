@@ -41,6 +41,7 @@ const LiveMeetingRecorder = lazy(() => import('./components/LiveMeetingRecorder'
 const PrivacyVault = lazy(() => import('./components/PrivacyVault').then(m => ({ default: m.PrivacyVault })));
 const SecretaryBrainHub = lazy(() => import('./components/SecretaryBrainHub').then(m => ({ default: m.SecretaryBrainHub })));
 const VoiceOnboardingWizard = lazy(() => import('./components/VoiceOnboardingWizard').then(m => ({ default: m.VoiceOnboardingWizard })));
+const CrossDeviceSyncCenter = lazy(() => import('./components/CrossDeviceSyncCenter').then(m => ({ default: m.CrossDeviceSyncCenter })));
 
 import { LiveActivityFeed } from './components/LiveActivityFeed';
 import { useVoiceEngine } from './hooks/useVoiceEngine';
@@ -59,7 +60,7 @@ export default function App() {
 
   // Clean single-drawer hub state
   const [isExecutiveDrawerOpen, setIsExecutiveDrawerOpen] = useState(false);
-  const [activeDrawerTab, setActiveDrawerTab] = useState<'briefing' | 'schedule' | 'comms' | 'meetings' | 'vault' | 'settings'>('briefing');
+  const [activeDrawerTab, setActiveDrawerTab] = useState<'briefing' | 'schedule' | 'comms' | 'meetings' | 'devices' | 'vault' | 'settings'>('briefing');
   const [isCommandOverlayOpen, setIsCommandOverlayOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
@@ -396,6 +397,7 @@ export default function App() {
                   { id: 'schedule', label: 'Schedule & Tasks', icon: Calendar },
                   { id: 'comms', label: 'Communications', icon: PhoneCall },
                   { id: 'meetings', label: 'Meeting Recorder', icon: Users },
+                  { id: 'devices', label: 'Device Mesh', icon: Radio },
                   { id: 'vault', label: 'Privacy Vault', icon: Shield },
                 ].map(tab => {
                   const Icon = tab.icon;
@@ -460,6 +462,10 @@ export default function App() {
 
                   {activeDrawerTab === 'meetings' && (
                     <LiveMeetingRecorder onSpeakSummary={speak} />
+                  )}
+
+                  {activeDrawerTab === 'devices' && (
+                    <CrossDeviceSyncCenter onSpeak={speak} soundSynth={soundSynth} />
                   )}
 
                   {activeDrawerTab === 'vault' && (

@@ -765,7 +765,7 @@ export const SecretaryBrainHub: React.FC<SecretaryBrainHubProps> = ({
                     soundSynth?.playActivate();
                     const profile = await proactiveSecretaryService.analyzeEmotionalTone("Ready for the board review, let's execute.", 0.25);
                     setEmotionProfile(profile);
-                    onSpeak("Understood, Tony. All systems primed with crisp executive briefing.");
+                    onSpeak("Understood. All systems primed with crisp executive briefing.");
                   }}
                   className="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/30 text-xs font-semibold transition-all"
                 >

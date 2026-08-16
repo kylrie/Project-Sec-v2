@@ -150,8 +150,8 @@ CORE VOICE & CONVERSATION RULES:
         let mergedActionData: any = {};
         const toolsUsed: string[] = [];
 
-        // Primary: gemini-3.7-flash (ultra-low latency ~250ms), fallback to gemini-2.5-pro
-        const modelsToTry = ['gemini-3.7-flash', 'gemini-2.5-pro'];
+        // Primary: gemini-3.7-flash, fallback to gemini-2.0-flash
+        const modelsToTry = ['gemini-3.7-flash', 'gemini-2.0-flash'];
         let activeModel = modelsToTry[0];
 
         // Agentic Tool Loop (up to 3 iterations for multi-hop tool execution)
@@ -205,7 +205,9 @@ CORE VOICE & CONVERSATION RULES:
             functionResponseParts.push({
               functionResponse: {
                 name: call.name,
-                response: result
+                response: typeof result === 'object' && !Array.isArray(result) && result !== null
+                  ? result
+                  : { result }
               }
             });
           }

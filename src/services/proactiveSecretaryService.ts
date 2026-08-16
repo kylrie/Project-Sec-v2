@@ -112,7 +112,7 @@ export const proactiveSecretaryService = {
   // Predictive Meeting Prep Dossier
   async assemblePredictivePrep(
     meetingTitle: string,
-    attendees: string[] = ['Sarah Jenkins', 'CFO', 'Board Members']
+    attendees: string[] = []
   ): Promise<PredictiveMeetingPrep> {
     try {
       const response = await fetch('/api/proactive/predictive-prep', {
@@ -123,19 +123,12 @@ export const proactiveSecretaryService = {
           attendees,
           pastMinutes: [
             {
-              topic: 'Previous Q2 Budget & Roadmap Review',
-              decisions: ['Approved preliminary budget of $450k', 'Requested updated Q3 breakdown before board review'],
-              actionItems: ['Tony to approve deck', 'Sarah to circulate final figures']
+              topic: 'Previous Strategy & Roadmap Review',
+              decisions: ['Approved preliminary roadmap', 'Requested updated Q3 breakdown before review'],
+              actionItems: ['Approve deck', 'Circulate final figures']
             }
           ],
-          inboxThreads: [
-            {
-              from: 'Sarah Jenkins',
-              subject: 'Action Required: Finalized Q3 Budget Deck',
-              snippet: 'Attached the final spreadsheet and executive summary for review before 4 PM.',
-              date: 'Today, 1h ago'
-            }
-          ]
+          inboxThreads: []
         })
       });
 
@@ -146,32 +139,22 @@ export const proactiveSecretaryService = {
       console.warn('Using client fallback for predictive prep', err);
       return {
         meetingId: 'prep-' + Date.now(),
-        meetingTitle: meetingTitle || 'Investor Strategy & Q3 Budget Review',
-        startTime: '10 minutes from now (02:00 PM)',
+        meetingTitle: meetingTitle || 'Strategy & Review',
+        startTime: '10 minutes from now',
         attendees: attendees,
-        relevantEmails: [
-          {
-            subject: 'Action Required: Finalized Q3 Budget Deck',
-            from: 'Sarah Jenkins (sarah.j@enterprise.com)',
-            snippet: 'Attached the revised spreadsheet with 12% margin expansion. Need your sign-off before 4 PM.',
-            date: 'Today at 1:00 PM'
-          }
-        ],
+        relevantEmails: [],
         priorMeetingMinutes: {
-          topic: 'Prior Board Session (July 28)',
-          decisions: ['Authorized expansion into neural edge deployment', 'Requested budget model for Q3 review'],
+          topic: 'Prior Executive Session',
+          decisions: ['Authorized expansion into neural edge deployment', 'Requested model review'],
           actionItems: ['Prepare updated presentation deck', 'Send attendee roster']
         },
         suggestedAgendaItems: [
-          '1. Review revised operating expenses and R&D allocation',
-          '2. Formally sign off on the Q3 budget deck for the audit committee',
-          '3. Set milestone timeline for Q4 delivery'
+          '1. Review revised operating expenses',
+          '2. Formally sign off on key milestones',
+          '3. Set timeline for Q4 delivery'
         ],
-        requiredDocuments: [
-          { title: 'Q3_Executive_Budget_Deck_Final.pdf', type: 'presentation' },
-          { title: 'Board_Audit_Committee_Roster.docx', type: 'doc' }
-        ],
-        spokenSummary: "You're meeting with Sarah and the board in 10 minutes. Last meeting, they asked for the budget. Here's that doc."
+        requiredDocuments: [],
+        spokenSummary: "You have a meeting in 10 minutes. I have prepared your briefing dossier."
       };
     }
   },

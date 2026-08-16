@@ -50,53 +50,32 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
 
     setState('speaking');
 
-    // 1. Primary: Google Neural Audio via /api/tts
-    try {
-      const audio = new Audio(`/api/tts?text=${encodeURIComponent(cleanText)}`);
-      activeAudioRef.current = audio;
-      audio.playbackRate = 1.04;
-
-      audio.onended = () => {
-        activeAudioRef.current = null;
-        setState('standby');
-      };
-
-      audio.onerror = () => {
-        console.warn('[VoiceEngine] Neural TTS playback failed, falling back to Web Speech API');
-        activeAudioRef.current = null;
-        fallbackBrowserSpeak(cleanText);
-      };
-
-      audio.play().catch(() => {
-        fallbackBrowserSpeak(cleanText);
-      });
-    } catch {
-      fallbackBrowserSpeak(cleanText);
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      setState('standby');
+      return;
     }
 
-    function fallbackBrowserSpeak(txt: string) {
-      if (!window.speechSynthesis) {
-        setState('standby');
-        return;
-      }
-      try {
-        if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-        const u = new SpeechSynthesisUtterance(txt);
-        const voices = window.speechSynthesis.getVoices();
-        const s = settingsRef.current;
-        const v = voices.find(x => x.name === s.voiceName) ||
-          voices.find(x => /Google|Natural|Jenny|Aria|Samantha|Zira/i.test(x.name) && x.lang.startsWith('en')) ||
-          voices.find(x => x.lang.startsWith('en')) || voices[0];
-        if (v) u.voice = v;
-        u.rate = s.rate || 1.05;
-        u.pitch = s.pitch || 1.0;
-        u.volume = s.volume || 1.0;
-        u.onend = () => setState('standby');
-        u.onerror = () => setState('standby');
-        window.speechSynthesis.speak(u);
-      } catch {
-        setState('standby');
-      }
+    try {
+      if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+      window.speechSynthesis.cancel(); // Cancel any lingering utterance
+
+      const u = new SpeechSynthesisUtterance(cleanText);
+      const voices = window.speechSynthesis.getVoices();
+      const s = settingsRef.current;
+      const v = voices.find(x => x.name === s.voiceName) ||
+        voices.find(x => /Google|Natural|Jenny|Aria|Samantha|Zira|Microsoft/i.test(x.name) && x.lang.startsWith('en')) ||
+        voices.find(x => x.lang.startsWith('en')) || voices[0];
+
+      if (v) u.voice = v;
+      u.rate = s.rate || 1.05;
+      u.pitch = s.pitch || 1.0;
+      u.volume = s.volume || 1.0;
+      u.onend = () => setState('standby');
+      u.onerror = () => setState('standby');
+
+      window.speechSynthesis.speak(u);
+    } catch {
+      setState('standby');
     }
   }, []);
 

@@ -467,7 +467,7 @@ Response:
               <pre className="p-2.5 rounded bg-zinc-950 text-[11px] font-mono text-zinc-300 overflow-x-auto">
 {`Request:
 {
-  "transcript": "[00:05] Tony: Schedule review with board...",
+  "transcript": "[00:05] Executive: Schedule review with board...",
   "meetingTitle": "Board Review"
 }
 

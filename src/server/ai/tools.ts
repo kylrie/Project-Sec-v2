@@ -10,7 +10,7 @@ export interface ExecutableTool {
 }
 
 /**
- * All Tool Definitions for FRIDAY Executive AI Brain (Compatible with Gemini & OpenAI)
+ * All Tool Definitions for AHRI Executive AI Brain (Compatible with Gemini & OpenAI)
  */
 export const FRIDAY_TOOLS: ExecutableTool[] = [
   // 1. Calendar Tools

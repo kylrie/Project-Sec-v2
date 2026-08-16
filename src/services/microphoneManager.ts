@@ -257,13 +257,14 @@ export class MicrophoneManager {
 
     if (this.mode === 'wake-word') {
       const text = (this.finalTranscript + interim).toLowerCase();
-      if (!this.wakeWordDetected && /\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|friday|jarvis)\b/i.test(text)) {
+      const wakeWordRegex = /\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|ari|aria|harry|airy|aerie|aury|eric|ah\s*ree|friday|jarvis)\b/i;
+      if (!this.wakeWordDetected && (wakeWordRegex.test(text) || text.includes('ahri') || text.includes('hey ari') || text.includes('hey ahri'))) {
         this.wakeWordDetected = true;
         this.callbacks.onWakeWord?.();
         this.resetSilenceTimer();
       }
       if (this.wakeWordDetected && final) {
-        const clean = final.replace(/\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|friday|jarvis)\b[,\s]*/gi, '').trim();
+        const clean = final.replace(/\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|ari|aria|harry|airy|aerie|aury|eric|ah\s*ree|friday|jarvis)\b[,\s]*/gi, '').trim();
         if (clean) {
           this.callbacks.onTranscript?.(clean, true);
           this.resetSilenceTimer();

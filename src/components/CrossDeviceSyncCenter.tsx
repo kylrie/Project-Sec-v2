@@ -23,6 +23,7 @@ import { cloudSyncService } from '../services/cloudSyncService';
 import { securityVaultService } from '../services/securityVaultService';
 import { storageService } from '../services/storage';
 import { SoundSynthesizer } from '../services/audioEffects';
+import { SaaSDeviceControlCenter } from './SaaSDeviceControlCenter';
 
 interface CrossDeviceSyncCenterProps {
   soundSynth?: SoundSynthesizer;
@@ -111,6 +112,9 @@ export const CrossDeviceSyncCenter: React.FC<CrossDeviceSyncCenterProps> = ({
 
   return (
     <div id="cross-device-sync-center" className="space-y-6 animate-in fade-in duration-300">
+      {/* SaaS Multi-Device Control Dashboard */}
+      <SaaSDeviceControlCenter onSpeak={onSpeak} />
+
       {/* Header Banner */}
       <div className="p-6 rounded-2xl bg-slate-900/80 border border-cyan-500/30 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -159,7 +163,12 @@ export const CrossDeviceSyncCenter: React.FC<CrossDeviceSyncCenterProps> = ({
             </div>
 
             <div className="space-y-3">
-              {syncState.connectedDevices.map((device) => (
+              {syncState.connectedDevices.length === 0 ? (
+                <div className="p-4 rounded-xl bg-slate-950/40 border border-slate-800 text-xs text-slate-400 text-center">
+                  Live mesh devices are automatically registered and controlled in the Live SaaS Control Dashboard above.
+                </div>
+              ) : (
+                syncState.connectedDevices.map((device) => (
                 <div
                   key={device.deviceId}
                   className={`p-4 rounded-xl border flex items-center justify-between transition-all ${
@@ -199,7 +208,7 @@ export const CrossDeviceSyncCenter: React.FC<CrossDeviceSyncCenterProps> = ({
                     </div>
                   </div>
                 </div>
-              ))}
+              )))}
             </div>
 
             {/* Intelligent Conflict Resolution Controller */}

@@ -28,7 +28,7 @@ import { registerDeviceWs, unregisterDeviceWs } from "./src/server/services/mesh
 
 
 
-async function startServer() {
+export async function startServer(portOverride?: number): Promise<http.Server> {
   const app = express();
 
   // CORS: Allow Android app and Electron to hit the remote backend
@@ -59,7 +59,7 @@ async function startServer() {
     allowedHeaders: ['Content-Type', 'Authorization', 'x-dev-user-id']
   }));
 
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = portOverride || Number(process.env.PORT) || 3000;
   
   // Initialize SQLite Database Tables & Seeds
   initDatabase();
@@ -934,7 +934,7 @@ Return JSON:
   // Beta Feedback & Fine-Tuning Submission
   app.post("/api/feedback/submit", (req, res) => {
     const { feedbackId, targetType, rating, comment, voicePersona } = req.body;
-    console.log(`[FRIDAY Feedback Logged] Type: ${targetType}, Rating: ${rating}, Persona: ${voicePersona}, Comment: ${comment}`);
+    console.log(`[Ahri Feedback Logged] Type: ${targetType}, Rating: ${rating}, Persona: ${voicePersona}, Comment: ${comment}`);
     
     res.json({
       status: "recorded",
@@ -953,15 +953,33 @@ Return JSON:
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(__dirname);
+    console.log(`[Ahri Core] Serving production static bundle from: ${distPath}`);
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  server.listen(PORT, "0.0.0.0", () => {
-    console.log(`[FRIDAY Core] Server running on http://localhost:${PORT}`);
+  return new Promise<http.Server>((resolve, reject) => {
+    server.on('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        console.warn(`[Ahri Core] Port ${PORT} already in use. Reusing active instance.`);
+        resolve(server);
+      } else {
+        reject(err);
+      }
+    });
+
+    server.listen(PORT, "0.0.0.0", () => {
+      console.log(`[Ahri Core] Server running on http://localhost:${PORT}`);
+      resolve(server);
+    });
   });
 }
 
-startServer();
+// Auto-start only when run directly from CLI (e.g. tsx server.ts / node dist/server.cjs)
+if (process.env.ELECTRON_IN_PROCESS !== 'true') {
+  startServer().catch((err) => {
+    console.error('[FRIDAY Core] Failed to start server:', err);
+  });
+}

@@ -112,12 +112,12 @@ export const VoiceOnboardingWizard: React.FC<VoiceOnboardingWizardProps> = ({
                 onClick={() => {
                   soundSynth?.playActivate();
                   setWakeWordTested(true);
-                  onSpeak("Neural voice channel online. Calibration successful, Tony.");
+                  onSpeak("Neural voice channel online. Calibration successful.");
                 }}
                 className="px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-sm shadow-lg shadow-cyan-500/25 flex items-center gap-2 mx-auto cursor-pointer"
               >
                 <Mic className="w-4 h-4" />
-                {wakeWordTested ? 'Acoustic Calibration Verified' : 'Test "Hey Friday" Wake Word'}
+                {wakeWordTested ? 'Acoustic Calibration Verified' : 'Test "Hey Ahri" Wake Word'}
               </button>
             </div>
 
@@ -138,7 +138,7 @@ export const VoiceOnboardingWizard: React.FC<VoiceOnboardingWizardProps> = ({
             </div>
             <h3 className="text-lg font-bold text-white">Connect Google Workspace</h3>
             <p className="text-xs text-slate-300">
-              Grant permissions to Calendar, Gmail, Google Tasks, and Contacts so FRIDAY can draft emails, schedule focus blocks, and screen VIP messages.
+              Grant permissions to Calendar, Gmail, Google Tasks, and Contacts so AHRI can draft emails, schedule focus blocks, and screen VIP messages.
             </p>
 
             <div className="pt-2">
@@ -146,12 +146,12 @@ export const VoiceOnboardingWizard: React.FC<VoiceOnboardingWizardProps> = ({
                 onClick={() => {
                   soundSynth?.playActivate();
                   setWorkspaceGranted(true);
-                  onSpeak("Google Workspace connected. 4 calendar events and 2 urgent emails indexed.");
+                  onSpeak("Google Workspace connected. Workspace indexed.");
                 }}
                 className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-sm shadow-lg shadow-emerald-500/25 flex items-center gap-2 mx-auto cursor-pointer"
               >
                 <UserCheck className="w-4 h-4" />
-                {workspaceGranted ? 'Workspace Connected (Executive User)' : 'Authorize Google Workspace'}
+                {workspaceGranted ? 'Workspace Connected' : 'Authorize Google Workspace'}
               </button>
             </div>
 
@@ -168,7 +168,7 @@ export const VoiceOnboardingWizard: React.FC<VoiceOnboardingWizardProps> = ({
         {currentStep === 3 && (
           <div className="space-y-4 animate-in fade-in">
             <div className="text-center">
-              <h3 className="text-lg font-bold text-white">Choose FRIDAY's Voice Persona</h3>
+              <h3 className="text-lg font-bold text-white">Choose AHRI's Voice Persona</h3>
               <p className="text-xs text-slate-300">Select the speaking style and cadence for your executive assistant.</p>
             </div>
 
@@ -180,7 +180,7 @@ export const VoiceOnboardingWizard: React.FC<VoiceOnboardingWizardProps> = ({
                     soundSynth?.playBeep();
                     setSelectedPersona(persona.id);
                     onSelectPersonality(persona.personality);
-                    onSpeak(`Hello Tony, I am your ${persona.name}. Ready for executive briefing.`);
+                    onSpeak(`Hello, I am your ${persona.name}. Ready for executive briefing.`);
                   }}
                   className={`p-4 rounded-xl border cursor-pointer transition-all ${
                     selectedPersona === persona.id

@@ -2,10 +2,28 @@ const { app, BrowserWindow, globalShortcut, Tray, Menu, nativeImage, ipcMain, se
 const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
+const fs = require('fs');
+const os = require('os');
+
+const debugLogPath = path.join(os.homedir(), 'project-ahri-boot.log');
+function debugLog(...args) {
+  try {
+    const line = `[${new Date().toISOString()}] ` + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ') + '\n';
+    fs.appendFileSync(debugLogPath, line);
+    console.log(...args);
+  } catch {}
+}
+
+debugLog('--- Project Ahri Electron Booting ---');
+debugLog('app.isPackaged:', app.isPackaged);
+debugLog('NODE_ENV:', process.env.NODE_ENV);
 
 try {
   require('dotenv').config({ path: path.join(__dirname, '../.env') });
-} catch {}
+  debugLog('Loaded .env successfully');
+} catch (e) {
+  debugLog('Notice loading .env:', e.message);
+}
 
 if (process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) {
   process.env.GOOGLE_API_KEY = process.env.GEMINI_API_KEY;
@@ -22,50 +40,65 @@ let tray;
 let serverProcess;
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
-function startBackend() {
+async function startBackend() {
+  debugLog('startBackend() called, isDev:', isDev);
   if (isDev) {
     // In development mode, the dev server is run separately (e.g. via concurrently)
     return Promise.resolve(true);
   }
 
-  // Production: start the compiled server using Electron's embedded Node runtime
+  // Set persistent user data path for SQLite database
+  const userDataDir = app.getPath('userData');
+  const dataDir = path.join(userDataDir, 'data');
+  process.env.AHRI_DATA_DIR = dataDir;
+  process.env.PORT = process.env.PORT || '3000';
+  process.env.NODE_ENV = 'production';
+  process.env.ELECTRON_IN_PROCESS = 'true';
+
   const appPath = app.getAppPath();
   const serverPath = path.join(appPath, 'dist', 'server.cjs');
 
+  debugLog('Initializing in-process backend from:', serverPath);
+  debugLog('Persistent SQLite directory:', dataDir);
+
   try {
-    serverProcess = spawn(process.execPath, [serverPath], {
-      env: { 
-        ...process.env, 
-        ELECTRON_RUN_AS_NODE: '1',
-        NODE_ENV: 'production', 
-        PORT: '3000' 
-      },
-      stdio: 'inherit',
-      detached: false
-    });
-  } catch (spawnErr) {
-    console.warn('[Electron] process.execPath spawn failed, attempting node fallback:', spawnErr);
-    serverProcess = spawn('node', [serverPath], {
-      env: { ...process.env, NODE_ENV: 'production', PORT: '3000' },
-      stdio: 'inherit',
-      detached: false
-    });
+    const backend = require(serverPath);
+    debugLog('Backend module required successfully. Type of startServer:', typeof backend.startServer);
+    if (typeof backend.startServer === 'function') {
+      await backend.startServer(3000);
+      debugLog('In-process backend startServer(3000) resolved successfully!');
+      return true;
+    } else {
+      debugLog('Backend module loaded but startServer is not a function.');
+      return true;
+    }
+  } catch (err) {
+    debugLog('In-process backend load error:', err.stack || err.message || err);
+    // Fallback: attempt external node spawn if available on system
+    try {
+      serverProcess = spawn('node', [serverPath], {
+        env: { ...process.env, NODE_ENV: 'production', PORT: '3000' },
+        stdio: 'inherit',
+        detached: false
+      });
+      serverProcess.on('error', (spawnErr) => {
+        debugLog('Fallback server process error:', spawnErr);
+      });
+    } catch (spawnErr) {
+      debugLog('Fallback spawn error:', spawnErr);
+    }
   }
 
-  serverProcess.on('error', (err) => {
-    console.error('[Electron] Failed to start backend server:', err);
-  });
-
-  // Wait for server to be ready before loading window
+  // Verify health check
   return new Promise((resolve) => {
     let attempts = 0;
-    const maxAttempts = 60; // 30 seconds max
+    const maxAttempts = 30; // 15 seconds max
     const check = setInterval(() => {
       attempts++;
       http.get('http://localhost:3000/api/health', (res) => {
         if (res.statusCode === 200) {
           clearInterval(check);
-          console.log('[Electron] Backend server is healthy and ready.');
+          console.log('[Electron] Backend health check verified.');
           resolve(true);
         }
       }).on('error', () => {
@@ -119,6 +152,16 @@ function createWindow() {
     }
   });
 
+  // Handle load failure with automatic retry
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.warn(`[Electron] Page failed to load (${errorCode}: ${errorDescription}). Retrying in 1s...`);
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.loadURL('http://localhost:3000');
+      }
+    }, 1000);
+  });
+
   mainWindow.loadURL('http://localhost:3000');
 
   // Register Global Summon Hotkey (Alt+Shift+A)
@@ -137,6 +180,18 @@ function createWindow() {
     toggleMiniMode();
   });
 
+  // Toggle DevTools (F12 or Ctrl+Shift+I)
+  globalShortcut.register('F12', () => {
+    if (mainWindow) {
+      mainWindow.webContents.toggleDevTools();
+    }
+  });
+  globalShortcut.register('CommandOrControl+Shift+I', () => {
+    if (mainWindow) {
+      mainWindow.webContents.toggleDevTools();
+    }
+  });
+
   // Minimize to tray on close
   mainWindow.on('close', (event) => {
     if (!app.isQuitting) {
@@ -152,49 +207,58 @@ function createWindow() {
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, '../public/icon-256.png');
-  const icon = nativeImage.createFromPath(iconPath);
-  tray = new Tray(icon.resize({ width: 16, height: 16 }));
+  try {
+    const iconPath = path.join(__dirname, '../public/icon-256.png');
+    let icon = nativeImage.createFromPath(iconPath);
+    if (icon && !icon.isEmpty()) {
+      tray = new Tray(icon.resize({ width: 16, height: 16 }));
+    } else {
+      console.warn('[Electron] Tray icon empty, skipping tray creation.');
+      return;
+    }
 
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'Open Project Ahri (Alt+Shift+A)',
-      click: () => {
-        if (mainWindow) {
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Open Project Ahri (Alt+Shift+A)',
+        click: () => {
+          if (mainWindow) {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        }
+      },
+      {
+        label: 'Toggle Mini Overlay Mode (Ctrl+Shift+M)',
+        click: () => {
+          toggleMiniMode();
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit',
+        click: () => {
+          app.isQuitting = true;
+          app.quit();
+        }
+      }
+    ]);
+
+    tray.setToolTip('Project Ahri - AI Executive Intelligence');
+    tray.setContextMenu(contextMenu);
+
+    tray.on('click', () => {
+      if (mainWindow) {
+        if (mainWindow.isVisible() && mainWindow.isFocused()) {
+          mainWindow.hide();
+        } else {
           mainWindow.show();
           mainWindow.focus();
         }
       }
-    },
-    {
-      label: 'Toggle Mini Overlay Mode (Ctrl+Shift+M)',
-      click: () => {
-        toggleMiniMode();
-      }
-    },
-    { type: 'separator' },
-    {
-      label: 'Quit',
-      click: () => {
-        app.isQuitting = true;
-        app.quit();
-      }
-    }
-  ]);
-
-  tray.setToolTip('Project Ahri - AI Executive Intelligence');
-  tray.setContextMenu(contextMenu);
-
-  tray.on('click', () => {
-    if (mainWindow) {
-      if (mainWindow.isVisible() && mainWindow.isFocused()) {
-        mainWindow.hide();
-      } else {
-        mainWindow.show();
-        mainWindow.focus();
-      }
-    }
-  });
+    });
+  } catch (trayErr) {
+    console.warn('[Electron] Tray creation notice:', trayErr?.message || trayErr);
+  }
 }
 
 // IPC Handlers for window controls

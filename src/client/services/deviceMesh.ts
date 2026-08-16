@@ -130,6 +130,23 @@ class DeviceMeshController {
         navigator.vibrate(params?.pattern || [200, 100, 200]);
       }
     });
+
+    // 6. Voice Relay Command (Remote execution on Ahri AI engine)
+    this.registerHandler('voice_relay', async (params: { message: string }) => {
+      if (params?.message) {
+        console.log(`[DeviceMesh] Remote Voice Relay received: "${params.message}"`);
+        try {
+          await apiPost('/api/command', {
+            message: params.message,
+            sessionId: 'remote-mesh-relay',
+            personality: 'professional',
+            userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          });
+        } catch (err) {
+          console.error('[DeviceMesh] Voice relay error:', err);
+        }
+      }
+    });
   }
 
   /**

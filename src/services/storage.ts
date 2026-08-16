@@ -101,107 +101,35 @@ export const DEFAULT_HABITS: HabitPattern[] = [
 
 export const DEFAULT_RELATIONSHIPS: ContactRelationship[] = [];
 
-export const DEFAULT_PROACTIVE_SUGGESTIONS: ProactiveSuggestion[] = [
-  {
-    id: 'sug-1',
-    type: 'morning_briefing',
-    title: 'Morning Briefing 2.0 Ready',
-    description: '4 meetings scheduled. Heavy traffic alert on FDR Drive for 9:00 AM briefing. 2 urgent emails pending approval.',
-    spokenPrompt: 'Good morning. You have 4 meetings. Traffic is heavy to the 9 AM. You have 2 urgent emails. Also, you have not worked out in 3 days — your 2 PM slot is free.',
-    actionType: 'play_morning_briefing',
-    timestamp: Date.now() - 1800000,
-    badge: 'Proactive Briefing'
-  },
-  {
-    id: 'sug-2',
-    type: 'habit_block',
-    title: 'Friday 4 PM Focus Block Suggestion',
-    description: 'Based on 85% cancellation pattern, protect 4:00 PM – 6:00 PM for deep focus.',
-    spokenPrompt: 'You always cancel Friday 4 PM meetings. Shall I start blocking that time as deep focus?',
-    actionType: 'block_calendar_habit',
-    actionPayload: { time: 'Friday 4:00 PM - 6:00 PM', title: 'Focus & Executive Review' },
-    timestamp: Date.now() - 3600000 * 2,
-    badge: 'Habit Engine'
-  },
-  {
-    id: 'sug-3',
-    type: 'predictive_prep',
-    title: 'Acme Corp / Budget Review Meeting Prep',
-    description: 'Surfaced last meeting minutes, CFO action items, and approved Q3 deck.',
-    spokenPrompt: 'You are meeting with Sarah and the board in 10 minutes. Last meeting they requested the budget deck. I have verified and pulled the document.',
-    actionType: 'open_meeting_prep',
-    timestamp: Date.now() - 3600000 * 4,
-    badge: 'Predictive Prep'
-  },
-  {
-    id: 'sug-4',
-    type: 'relationship_nudge',
-    title: 'Relationship Cadence: Sarah Jenkins',
-    description: 'No direct sync in 3 weeks. Urgent budget approval received.',
-    spokenPrompt: 'You have not spoken to Sarah in 3 weeks. She sent a message yesterday. Want me to draft an approval reply?',
-    actionType: 'reply_relationship_contact',
-    actionPayload: { contactId: 'rel-1', name: 'Sarah Jenkins' },
-    timestamp: Date.now() - 3600000 * 5,
-    badge: 'VIP Cadence'
-  }
-];
+export const DEFAULT_PROACTIVE_SUGGESTIONS: ProactiveSuggestion[] = [];
 
 export const DEFAULT_SYNC_STATE: CrossDeviceSyncState = {
   isOnline: true,
   syncStatus: 'synced',
-  lastSyncedTimestamp: Date.now() - 12000,
+  lastSyncedTimestamp: Date.now(),
   e2eeKeyFingerprint: 'SHA256: 8f4a9b...7e21cd0 (AES-GCM 256)',
   pendingSyncCount: 0,
   dataResidency: 'eu-central',
   conflictResolutionMode: 'auto_merge',
-  connectedDevices: [
-    {
-      deviceId: 'dev-macbook-pro',
-      deviceName: 'Tony’s MacBook Pro 16" (M3 Max)',
-      deviceType: 'desktop_mac',
-      isOnline: true,
-      lastSyncedAt: Date.now() - 8000,
-      appVersion: 'v2.6.0-release',
-      ipLocation: 'New York, US',
-      isCurrentDevice: true
-    },
-    {
-      deviceId: 'dev-iphone-16',
-      deviceName: 'Tony’s iPhone 16 Pro Max',
-      deviceType: 'mobile_ios',
-      isOnline: true,
-      lastSyncedAt: Date.now() - 14000,
-      appVersion: 'v2.6.0-ios (TestFlight)',
-      ipLocation: 'New York, US'
-    },
-    {
-      deviceId: 'dev-wearable-glass',
-      deviceName: 'Executive HUD Wearable Core',
-      deviceType: 'web',
-      isOnline: true,
-      lastSyncedAt: Date.now() - 25000,
-      appVersion: 'v2.6.0-hud',
-      ipLocation: 'Executive Lab'
-    }
-  ]
+  connectedDevices: []
 };
 
 export const DEFAULT_VOICE_PERSONAS: VoicePersonaOption[] = [
   {
-    id: 'persona-friday-classic',
-    name: 'FRIDAY Executive (Irish/British)',
+    id: 'persona-ahri-classic',
+    name: 'AHRI Executive',
     description: 'Impeccably poised, highly competent, calm, and subtly witty executive right hand.',
-    accent: 'Irish / British Executive',
+    accent: 'Executive',
     style: 'crisp',
     rate: 1.05,
     pitch: 1.02,
     personality: 'professional'
   },
   {
-    id: 'persona-jarvis',
-    name: 'JARVIS Tactical Core',
+    id: 'persona-tactical',
+    name: 'Tactical Core',
     description: 'Analytical, formal, hyper-precise cadence with tactical telemetry emphasis.',
-    accent: 'British Crisp',
+    accent: 'Crisp',
     style: 'tactical',
     rate: 1.0,
     pitch: 0.95,
@@ -219,52 +147,15 @@ export const DEFAULT_VOICE_PERSONAS: VoicePersonaOption[] = [
   }
 ];
 
-export const DEFAULT_DAILY_AUDIT_LOGS: AuditLogEntry[] = [
-  {
-    id: 'aud-log-1',
-    timestamp: Date.now() - 3600000 * 1.5,
-    actionType: 'email_sent',
-    description: 'Dispatched approved Q3 Budget confirmation email to Sarah Jenkins via Google Workspace API.',
-    riskLevel: 'medium',
-    biometricVerified: true,
-    deviceOrigin: 'MacBook Pro 16"'
-  },
-  {
-    id: 'aud-log-2',
-    timestamp: Date.now() - 3600000 * 2.2,
-    actionType: 'event_created',
-    description: 'Created calendar focus block "Executive Focus: Q3 Review" on Google Calendar.',
-    riskLevel: 'low',
-    biometricVerified: false,
-    deviceOrigin: 'FRIDAY Neural Core'
-  },
-  {
-    id: 'aud-log-3',
-    timestamp: Date.now() - 3600000 * 3.1,
-    actionType: 'e2ee_sync',
-    description: 'Synchronized encrypted conversation memories and calendar across 3 verified devices.',
-    riskLevel: 'low',
-    biometricVerified: false,
-    deviceOrigin: 'WebSocket Sync Node'
-  },
-  {
-    id: 'aud-log-4',
-    timestamp: Date.now() - 3600000 * 4.5,
-    actionType: 'call_screened',
-    description: 'Auto-screened incoming cellular call from Elena Vance and generated acoustic summary.',
-    riskLevel: 'low',
-    biometricVerified: false,
-    deviceOrigin: 'iPhone 16 Pro'
-  }
-];
+export const DEFAULT_DAILY_AUDIT_LOGS: AuditLogEntry[] = [];
 
 export const DEFAULT_COMMUNICATION_SETTINGS: CommunicationSettings = {
   dndMode: 'off',
   autoResponderEnabled: true,
-  autoResponderTemplate: "FRIDAY Auto-Responder: Tony is currently unavailable in an executive session. I am monitoring for critical emergencies.",
+  autoResponderTemplate: "AHRI Auto-Responder: User is currently unavailable. I am monitoring for critical emergencies.",
   drivingModeHandsFree: false,
   emergencyKeywords: ['urgent', 'emergency', 'asap', 'critical', 'hospital', 'code red', 'immediately'],
-  vipContacts: ['Pepper Potts', 'Mom', 'Sarah Jenkins', 'Elena Vance', 'Board Director'],
+  vipContacts: [],
   announceIncomingCalls: true,
   announceIncomingSMS: true,
   viberConnected: true,

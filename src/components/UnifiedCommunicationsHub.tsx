@@ -231,7 +231,7 @@ export const UnifiedCommunicationsHub: React.FC<UnifiedCommunicationsHubProps> =
       startedAt: Date.now(),
       durationSec: 0,
       liveTranscript: [
-        'Elena: Tony, glad I caught you!',
+        'Elena: Glad I caught you!',
         'Elena: We just completed the Whisper neural engine benchmark on local hardware.',
         'Elena: Latency dropped to 142ms. Can we approve the rollout for Q3 tonight?'
       ]
