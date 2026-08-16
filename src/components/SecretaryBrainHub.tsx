@@ -23,7 +23,11 @@ import {
   ArrowRight,
   TrendingUp,
   AlertTriangle,
-  Play
+  Play,
+  Bot,
+  Layers,
+  Crown,
+  Search
 } from 'lucide-react';
 import { 
   HabitPattern, 
@@ -37,6 +41,9 @@ import {
 import { storageService } from '../services/storage';
 import { proactiveSecretaryService } from '../services/proactiveSecretaryService';
 import { SoundSynthesizer } from '../services/audioEffects';
+import { COMPANIONS } from '../services/companionRegistry';
+import { userMemory } from '../services/userMemory';
+import { SKILLS } from '../skills';
 
 interface SecretaryBrainHubProps {
   onSpeak: (text: string) => void;
@@ -51,7 +58,7 @@ export const SecretaryBrainHub: React.FC<SecretaryBrainHubProps> = ({
   onOpenMessageThread,
   soundSynth
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'briefing' | 'habits' | 'predictive' | 'relationships' | 'emotion'>('briefing');
+  const [activeSubTab, setActiveSubTab] = useState<'briefing' | 'habits' | 'predictive' | 'relationships' | 'emotion' | 'companions'>('briefing');
   const [briefingV2, setBriefingV2] = useState<MorningBriefingV2 | null>(null);
   const [habits, setHabits] = useState<HabitPattern[]>([]);
   const [relationships, setRelationships] = useState<ContactRelationship[]>([]);
@@ -192,6 +199,18 @@ export const SecretaryBrainHub: React.FC<SecretaryBrainHubProps> = ({
           >
             <Activity className="w-3.5 h-3.5" />
             Emotional Tone
+          </button>
+          <button
+            id="tab-companions"
+            onClick={() => { soundSynth?.playBeep(); setActiveSubTab('companions'); }}
+            className={`px-3 py-1.5 text-xs font-mono rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeSubTab === 'companions'
+                ? 'bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+            }`}
+          >
+            <Bot className="w-3.5 h-3.5 text-emerald-400" />
+            Specialists & Skills
           </button>
         </div>
       </div>
@@ -754,6 +773,114 @@ export const SecretaryBrainHub: React.FC<SecretaryBrainHubProps> = ({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-TAB 6: COMPANIONS & SKILLS */}
+      {activeSubTab === 'companions' && (
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="p-5 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-sky-950/30 to-purple-950/40 border border-emerald-500/20 backdrop-blur-xl">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+                <Bot className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white tracking-wide">ONE AI Brain • Specialist Persona Network</h3>
+                <p className="text-xs text-zinc-400 mt-0.5">Ahri delegates tasks across specialized internal cognitive hats, rendered in 3D orbit and HUD telemetry.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* 4 Specialist Personas */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {COMPANIONS.map((companion) => (
+              <div 
+                key={companion.id}
+                className="p-4 rounded-xl backdrop-blur-md border transition-all hover:scale-[1.01]"
+                style={{ 
+                  backgroundColor: companion.color + '12', 
+                  borderColor: companion.color + '35' 
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span 
+                      className="w-3 h-3 rounded-full animate-pulse"
+                      style={{ backgroundColor: companion.color }}
+                    />
+                    <h4 className="font-bold text-sm text-white font-mono">{companion.name}</h4>
+                  </div>
+                  <span 
+                    className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border"
+                    style={{ 
+                      color: companion.color, 
+                      borderColor: companion.color + '40',
+                      backgroundColor: companion.color + '20'
+                    }}
+                  >
+                    {companion.role}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-300 mt-2.5 leading-relaxed">{companion.systemPrompt}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Built-in Multi-Step Skills */}
+          <div className="p-5 rounded-2xl bg-zinc-950/60 border border-zinc-800">
+            <div className="flex items-center gap-2 mb-4">
+              <Layers className="w-4 h-4 text-sky-400" />
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">Automated Skill Workflows</h4>
+            </div>
+
+            <div className="space-y-3">
+              {SKILLS.map((skill) => (
+                <div key={skill.id} className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-semibold text-xs text-white">{skill.name}</span>
+                    <span className="text-[10px] font-mono text-sky-400 bg-sky-950/50 px-2 py-0.5 rounded border border-sky-800/40">
+                      Trigger: "{skill.triggerPhrases[0]}"
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {skill.steps.map((st, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800/70 text-zinc-300 border border-zinc-700/50">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                        {st.description}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Persistent User Memory Profile */}
+          <div className="p-5 rounded-2xl bg-zinc-950/60 border border-zinc-800">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Brain className="w-4 h-4 text-purple-400" />
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">Persistent User Profile & Learned Facts</h4>
+              </div>
+              <span className="text-[10px] font-mono text-purple-400 bg-purple-950/50 px-2 py-0.5 rounded border border-purple-800/40">
+                localStorage Synced
+              </span>
+            </div>
+
+            {userMemory.getProfile().learnedFacts.length > 0 ? (
+              <div className="space-y-2">
+                {userMemory.getProfile().learnedFacts.map((fact, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg bg-purple-950/20 border border-purple-800/30 text-xs text-purple-200">
+                    <span>{fact.fact}</span>
+                    <span className="text-[10px] font-mono text-purple-400">{(fact.confidence * 100).toFixed(0)}% conf</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-zinc-400 italic">No custom facts extracted yet. Ahri automatically learns your habits and facts from continuous conversations.</p>
+            )}
           </div>
         </div>
       )}
