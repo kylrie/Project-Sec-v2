@@ -1,11 +1,11 @@
 import { microphoneManager } from '../../services/microphoneManager';
 
-export interface WakeWordServiceOptions {
+interface WakeWordServiceOptions {
   onWakeWordDetected?: (keyword: string) => void;
   onListeningStart?: () => void;
   onListeningEnd?: () => void;
   onTranscript?: (text: string) => void;
-  onError?: (error: any) => void;
+  onError?: (error: Error) => void;
 }
 
 export class WakeWordService {
@@ -23,8 +23,7 @@ export class WakeWordService {
 
   async start(): Promise<boolean> {
     if (this.isActive) return true;
-    
-    const started = await microphoneManager.start('wake-word', {
+    const ok = await microphoneManager.start('wake-word', {
       onWakeWord: () => {
         this.options.onWakeWordDetected?.('hey ahri');
         this.options.onListeningStart?.();
@@ -35,24 +34,14 @@ export class WakeWordService {
           this.options.onListeningEnd?.();
         }
       },
-      onError: (err: string) => {
-        this.options.onError?.(new Error(err));
-      }
+      onError: (err: string) => this.options.onError?.(new Error(err))
     });
-
-    if (started) {
-      this.isActive = true;
-      console.log('[WakeWord] Listening via MicrophoneManager');
-    }
-    return started;
+    if (ok) this.isActive = true;
+    return ok;
   }
 
   stop() {
     this.isActive = false;
-    if (microphoneManager.getMode() === 'wake-word') {
-      microphoneManager.stop();
-    }
+    if (microphoneManager.getMode() === 'wake-word') microphoneManager.stop();
   }
 }
-
-export default WakeWordService;
