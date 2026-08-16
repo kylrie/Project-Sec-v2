@@ -233,7 +233,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       if (settingsRef.current.soundEffects) soundEffects.playBargeIn();
       setState('interrupted');
       setTimeout(() => {
-        setState('standby');
+        setState((curr) => (curr === 'interrupted' ? 'standby' : curr));
       }, 300);
     }
   }, []);
@@ -637,8 +637,17 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
 
   // Fix startManualListening to guard against double-start
   const startManualListening = useCallback(() => {
+    if (audioContextRef.current?.state === 'suspended') {
+      audioContextRef.current.resume().catch(() => {});
+    }
     setupAudioAnalyser();
-    interrupt();
+    if (synthesisRef.current) {
+      try {
+        synthesisRef.current.cancel();
+      } catch (e) {
+        console.warn('Cancel speech error', e);
+      }
+    }
     isListeningIntentRef.current = true;
     setState('listening');
     setTranscript('');
@@ -662,7 +671,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
         }
       }
     }
-  }, [interrupt, setupAudioAnalyser]);
+  }, [setupAudioAnalyser]);
 
   // Stop Manual Listening and Send
   const stopManualListening = useCallback(() => {
