@@ -43,9 +43,7 @@ export class VADService {
     this.stop();
 
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      this.audioContext = existingAudioContext || new AudioCtx();
-      
+      this.audioContext = existingAudioContext || new (window.AudioContext || (window as any).webkitAudioContext)();
       if (this.audioContext.state === 'suspended') {
         this.audioContext.resume().catch(() => {});
       }
