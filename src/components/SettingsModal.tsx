@@ -29,6 +29,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [micEnumDone, setMicEnumDone] = useState(false);
   const [bubbleEnabled, setBubbleEnabled] = useState(false);
   const [wakeWordEnabled, setWakeWordEnabled] = useState(Boolean(settings.isWakeWordEnabled ?? settings.continuousListening ?? true));
+  const [miniMode, setMiniMode] = useState(false);
   const [isCheckingBubble, setIsCheckingBubble] = useState(false);
   const [isSavedRecently, setIsSavedRecently] = useState(false);
   const isAndroidNative = Overlay.isAvailable();
@@ -403,15 +404,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <p className="text-xs font-medium text-zinc-200">Barge-in Interruption</p>
                 <p className="text-[10px] text-zinc-500">Say "Stop" or speak to cut off speech</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setLocalSettings({ ...localSettings, bargeInEnabled: !localSettings.bargeInEnabled })}
-                className={`w-8 h-4 rounded-full transition-colors relative p-0.5 ${
-                  localSettings.bargeInEnabled ? 'bg-sky-600' : 'bg-zinc-800'
-                }`}
-              >
-                <div className={`w-3 h-3 rounded-full bg-white transition-transform ${localSettings.bargeInEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
-              </button>
+              <div className="flex items-center space-x-2">
+                <span className={`text-[10px] font-mono font-bold tracking-wider ${localSettings.bargeInEnabled ? 'text-sky-400' : 'text-zinc-500'}`}>
+                  {localSettings.bargeInEnabled ? 'ON' : 'OFF'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setLocalSettings({ ...localSettings, bargeInEnabled: !localSettings.bargeInEnabled })}
+                  className={`w-10 h-5.5 rounded-full transition-all relative p-0.5 cursor-pointer ${
+                    localSettings.bargeInEnabled ? 'bg-sky-500 shadow-[0_0_10px_rgba(14,165,233,0.4)]' : 'bg-zinc-800 border border-zinc-700'
+                  }`}
+                >
+                  <div className={`w-4.5 h-4.5 rounded-full bg-white transition-transform ${localSettings.bargeInEnabled ? 'translate-x-4.5' : 'translate-x-0'}`} />
+                </button>
+              </div>
             </div>
 
             <div className="p-3 rounded-xl bg-zinc-900/50 border border-zinc-800 flex items-center justify-between">
@@ -419,22 +425,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <p className="text-xs font-medium text-zinc-200">HUD Sound Effects</p>
                 <p className="text-[10px] text-zinc-500">Futuristic chimes & telemetry pings</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setLocalSettings({ ...localSettings, soundEffects: !localSettings.soundEffects })}
-                className={`w-8 h-4 rounded-full transition-colors relative p-0.5 ${
-                  localSettings.soundEffects ? 'bg-sky-600' : 'bg-zinc-800'
-                }`}
-              >
-                <div className={`w-3 h-3 rounded-full bg-white transition-transform ${localSettings.soundEffects ? 'translate-x-4' : 'translate-x-0'}`} />
-              </button>
+              <div className="flex items-center space-x-2">
+                <span className={`text-[10px] font-mono font-bold tracking-wider ${localSettings.soundEffects ? 'text-sky-400' : 'text-zinc-500'}`}>
+                  {localSettings.soundEffects ? 'ON' : 'OFF'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setLocalSettings({ ...localSettings, soundEffects: !localSettings.soundEffects })}
+                  className={`w-10 h-5.5 rounded-full transition-all relative p-0.5 cursor-pointer ${
+                    localSettings.soundEffects ? 'bg-sky-500 shadow-[0_0_10px_rgba(14,165,233,0.4)]' : 'bg-zinc-800 border border-zinc-700'
+                  }`}
+                >
+                  <div className={`w-4.5 h-4.5 rounded-full bg-white transition-transform ${localSettings.soundEffects ? 'translate-x-4.5' : 'translate-x-0'}`} />
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Android Floating Overlay Bubble System Feature */}
           <div className="p-4 rounded-xl bg-gradient-to-r from-sky-950/40 via-zinc-900/60 to-zinc-900/40 border border-sky-500/30 flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="p-2.5 bg-sky-500/20 text-sky-400 rounded-xl">
+              <div className={`p-2.5 rounded-xl transition-colors ${bubbleEnabled ? 'bg-sky-500/30 text-sky-300 shadow-[0_0_12px_rgba(14,165,233,0.3)]' : 'bg-sky-500/10 text-sky-400'}`}>
                 <Smartphone className="w-5 h-5" />
               </div>
               <div>
@@ -451,25 +462,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              disabled={isCheckingBubble}
-              onClick={handleToggleBubble}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all shadow-md ${
-                bubbleEnabled
-                  ? 'bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30'
-                  : 'bg-sky-600 hover:bg-sky-500 text-white shadow-[0_0_15px_rgba(14,165,233,0.3)]'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>{bubbleEnabled ? 'Hide Overlay' : 'Enable Floating Bubble'}</span>
-            </button>
+            <div className="flex items-center space-x-2.5">
+              <span className={`text-xs font-mono font-bold tracking-wider px-2 py-0.5 rounded border transition-all ${
+                bubbleEnabled 
+                  ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 shadow-[0_0_10px_rgba(14,165,233,0.3)]' 
+                  : 'bg-zinc-800/80 text-zinc-500 border-zinc-700'
+              }`}>
+                {bubbleEnabled ? '● ON' : '○ OFF'}
+              </span>
+              <button
+                type="button"
+                disabled={isCheckingBubble}
+                onClick={handleToggleBubble}
+                aria-label="Toggle Floating Bubble"
+                className={`w-12 h-6.5 rounded-full transition-all duration-300 relative p-0.5 cursor-pointer focus:outline-none ${
+                  bubbleEnabled
+                    ? 'bg-sky-500 shadow-[0_0_15px_rgba(14,165,233,0.5)]'
+                    : 'bg-zinc-800 border border-zinc-700 hover:bg-zinc-700'
+                }`}
+              >
+                <div
+                  className={`w-5.5 h-5.5 rounded-full bg-white shadow-md transition-transform duration-300 flex items-center justify-center ${
+                    bubbleEnabled ? 'translate-x-5.5' : 'translate-x-0'
+                  }`}
+                >
+                  <Smartphone className={`w-3 h-3 ${bubbleEnabled ? 'text-sky-600' : 'text-zinc-500'}`} />
+                </div>
+              </button>
+            </div>
           </div>
 
-          {/* Always-On Wake Word Detection (Picovoice Porcupine) */}
+          {/* Always-On Wake Word Detection */}
           <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-950/40 via-zinc-900/60 to-zinc-900/40 border border-emerald-500/30 flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl">
+              <div className={`p-2.5 rounded-xl transition-colors ${wakeWordEnabled ? 'bg-emerald-500/30 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.3)]' : 'bg-emerald-500/10 text-emerald-400'}`}>
                 <Mic className="w-5 h-5" />
               </div>
               <div>
@@ -484,28 +510,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <p className="text-[11px] text-zinc-400 mt-0.5">
                   Hands-free continuous recognition. Say "Hey Ahri" to trigger listening without pressing any buttons.
                 </p>
-
               </div>
             </div>
-            <button
-              type="button"
-              onClick={handleToggleWakeWord}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all shadow-md ${
-                wakeWordEnabled
-                  ? 'bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30'
-                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]'
-              }`}
-            >
-              <Mic className="w-3.5 h-3.5" />
-              <span>{wakeWordEnabled ? 'Disable Wake Word' : 'Enable Wake Word'}</span>
-            </button>
+            <div className="flex items-center space-x-2.5">
+              <span className={`text-xs font-mono font-bold tracking-wider px-2 py-0.5 rounded border transition-all ${
+                wakeWordEnabled 
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.3)]' 
+                  : 'bg-zinc-800/80 text-zinc-500 border-zinc-700'
+              }`}>
+                {wakeWordEnabled ? '● ON' : '○ OFF'}
+              </span>
+              <button
+                type="button"
+                onClick={handleToggleWakeWord}
+                aria-label="Toggle Always-On Wake Word"
+                className={`w-12 h-6.5 rounded-full transition-all duration-300 relative p-0.5 cursor-pointer focus:outline-none ${
+                  wakeWordEnabled
+                    ? 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)]'
+                    : 'bg-zinc-800 border border-zinc-700 hover:bg-zinc-700'
+                }`}
+              >
+                <div
+                  className={`w-5.5 h-5.5 rounded-full bg-white shadow-md transition-transform duration-300 flex items-center justify-center ${
+                    wakeWordEnabled ? 'translate-x-5.5' : 'translate-x-0'
+                  }`}
+                >
+                  <Mic className={`w-3 h-3 ${wakeWordEnabled ? 'text-emerald-600' : 'text-zinc-500'}`} />
+                </div>
+              </button>
+            </div>
           </div>
 
 
           {/* Windows Desktop Always-On-Top Mini Mode */}
           <div className="p-4 rounded-xl bg-gradient-to-r from-purple-950/30 via-zinc-900/60 to-zinc-900/40 border border-purple-500/30 flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="p-2.5 bg-purple-500/20 text-purple-400 rounded-xl">
+              <div className={`p-2.5 rounded-xl transition-colors ${miniMode ? 'bg-purple-500/30 text-purple-300 shadow-[0_0_12px_rgba(168,85,247,0.3)]' : 'bg-purple-500/10 text-purple-400'}`}>
                 <Monitor className="w-5 h-5" />
               </div>
               <div>
@@ -522,20 +562,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (typeof window !== 'undefined' && (window as any).electronAPI?.toggleMiniMode) {
-                  (window as any).electronAPI.toggleMiniMode();
-                } else {
-                  alert('Mini overlay mode hotkey is Ctrl+Shift+M in the Windows desktop app.');
-                }
-              }}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white flex items-center space-x-1.5 transition-all shadow-[0_0_15px_rgba(168,85,247,0.3)]"
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Toggle Mini Mode</span>
-            </button>
+            <div className="flex items-center space-x-2.5">
+              <span className={`text-xs font-mono font-bold tracking-wider px-2 py-0.5 rounded border transition-all ${
+                miniMode 
+                  ? 'bg-purple-500/20 text-purple-300 border-purple-500/40 shadow-[0_0_10px_rgba(168,85,247,0.3)]' 
+                  : 'bg-zinc-800/80 text-zinc-500 border-zinc-700'
+              }`}>
+                {miniMode ? '● ON' : '○ OFF'}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setMiniMode(prev => !prev);
+                  if (typeof window !== 'undefined' && (window as any).electronAPI?.toggleMiniMode) {
+                    (window as any).electronAPI.toggleMiniMode();
+                  } else {
+                    alert('Mini overlay mode hotkey is Ctrl+Shift+M in the Windows desktop app.');
+                  }
+                }}
+                aria-label="Toggle Always-On-Top Mini Mode"
+                className={`w-12 h-6.5 rounded-full transition-all duration-300 relative p-0.5 cursor-pointer focus:outline-none ${
+                  miniMode
+                    ? 'bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.5)]'
+                    : 'bg-zinc-800 border border-zinc-700 hover:bg-zinc-700'
+                }`}
+              >
+                <div
+                  className={`w-5.5 h-5.5 rounded-full bg-white shadow-md transition-transform duration-300 flex items-center justify-center ${
+                    miniMode ? 'translate-x-5.5' : 'translate-x-0'
+                  }`}
+                >
+                  <Layers className={`w-3 h-3 ${miniMode ? 'text-purple-600' : 'text-zinc-500'}`} />
+                </div>
+              </button>
+            </div>
           </div>
 
           {/* Cross-Device Neural Mesh Status */}
