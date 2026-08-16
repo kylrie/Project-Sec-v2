@@ -65,7 +65,7 @@ export class MicrophoneManager {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private processorNode: ScriptProcessorNode | null = null;
-  private workletNode: AudioWorkletNode | null = null;
+  private muteGainNode: GainNode | null = null;
   private recognition: any = null;
   private rollingPcmBuffers: Float32Array[] = [];
   private activePcmBuffers: Float32Array[] = [];
@@ -94,26 +94,23 @@ export class MicrophoneManager {
   private constructor() {}
 
   async initialize(): Promise<boolean> {
-    if (this.stream && this.stream.active && this.audioContext && this.audioContext.state !== 'closed' && (this.workletNode || this.processorNode)) {
+    // If AudioContext and stream are already active and healthy, reuse them directly
+    if (this.stream && this.stream.active && this.audioContext && this.audioContext.state !== 'closed' && this.processorNode) {
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume().catch(() => {});
+      }
       return true;
     }
 
     try {
-      // Clean up previous nodes and context before creating a new one
-      if (this.workletNode) { try { this.workletNode.disconnect(); } catch {} this.workletNode = null; }
-      if (this.processorNode) { try { this.processorNode.disconnect(); } catch {} this.processorNode = null; }
-      if (this.analyser) { try { this.analyser.disconnect(); } catch {} this.analyser = null; }
-      if (this.audioContext && this.audioContext.state !== 'closed') {
-        try { await this.audioContext.close(); } catch {}
-        this.audioContext = null;
-      }
+      // 1. Release any prior tracks and nodes to prevent cross-context collisions
+      this.cleanupAudioPipeline();
 
-      if (!this.stream || !this.stream.active) {
-        this.stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-          video: false
-        });
-      }
+      // 2. Open fresh getUserMedia audio stream
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: false
+      });
       
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioCtx) {
@@ -123,44 +120,37 @@ export class MicrophoneManager {
         }
         
         const source = this.audioContext.createMediaStreamSource(this.stream);
+        
+        // 3. Audio Analyser for FFT Visualization & VAD
         this.analyser = this.audioContext.createAnalyser();
         this.analyser.fftSize = 64;
         this.analyser.smoothingTimeConstant = 0.6;
         source.connect(this.analyser);
 
-        const onPcmChunk = (chunk: Float32Array) => {
+        // 4. PCM Audio Capture Stream Processor
+        this.processorNode = this.audioContext.createScriptProcessor(2048, 1, 1);
+        this.processorNode.onaudioprocess = (e) => {
           if (!this.isListening) return;
-          const copy = new Float32Array(chunk);
+          const inputData = e.inputBuffer.getChannelData(0);
+          const copy = new Float32Array(inputData);
+          
           if (this.hasDetectedSpeech) {
             this.activePcmBuffers.push(copy);
           } else {
+            // Keep ~1 second of pre-roll PCM in circular queue
             this.rollingPcmBuffers.push(copy);
-            if (this.rollingPcmBuffers.length > 80) {
+            if (this.rollingPcmBuffers.length > 25) {
               this.rollingPcmBuffers.shift();
             }
           }
         };
 
-        if (this.audioContext.audioWorklet) {
-          try {
-            await this.audioContext.audioWorklet.addModule('/pcm-processor.js');
-            this.workletNode = new AudioWorkletNode(this.audioContext, 'pcm-recorder-processor');
-            this.workletNode.port.onmessage = (e) => onPcmChunk(e.data);
-            source.connect(this.workletNode);
-            this.workletNode.connect(this.audioContext.destination);
-          } catch (workletErr) {
-            console.warn('[MicManager] AudioWorklet notice, using fallback processor:', workletErr);
-            this.processorNode = this.audioContext.createScriptProcessor(2048, 1, 1);
-            this.processorNode.onaudioprocess = (e) => onPcmChunk(e.inputBuffer.getChannelData(0));
-            source.connect(this.processorNode);
-            this.processorNode.connect(this.audioContext.destination);
-          }
-        } else {
-          this.processorNode = this.audioContext.createScriptProcessor(2048, 1, 1);
-          this.processorNode.onaudioprocess = (e) => onPcmChunk(e.inputBuffer.getChannelData(0));
-          source.connect(this.processorNode);
-          this.processorNode.connect(this.audioContext.destination);
-        }
+        // 5. Connect through a muted gain node to prevent mic loopback while keeping stream processor alive
+        this.muteGainNode = this.audioContext.createGain();
+        this.muteGainNode.gain.value = 0;
+        source.connect(this.processorNode);
+        this.processorNode.connect(this.muteGainNode);
+        this.muteGainNode.connect(this.audioContext.destination);
       }
       return true;
     } catch (e: any) {
@@ -500,24 +490,32 @@ export class MicrophoneManager {
     return this.stream;
   }
 
-  destroy() {
-    this.stop();
-    if (this.workletNode) {
-      try { this.workletNode.disconnect(); } catch {}
-      this.workletNode = null;
-    }
+  private cleanupAudioPipeline() {
     if (this.processorNode) {
       try { this.processorNode.disconnect(); } catch {}
       this.processorNode = null;
+    }
+    if (this.muteGainNode) {
+      try { this.muteGainNode.disconnect(); } catch {}
+      this.muteGainNode = null;
+    }
+    if (this.analyser) {
+      try { this.analyser.disconnect(); } catch {}
+      this.analyser = null;
     }
     if (this.stream) {
       this.stream.getTracks().forEach(t => t.stop());
       this.stream = null;
     }
     if (this.audioContext && this.audioContext.state !== 'closed') {
-      this.audioContext.close().catch(() => {});
+      try { this.audioContext.close(); } catch {}
       this.audioContext = null;
     }
+  }
+
+  destroy() {
+    this.stop();
+    this.cleanupAudioPipeline();
   }
 }
 
