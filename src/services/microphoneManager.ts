@@ -113,12 +113,6 @@ export class MicrophoneManager {
       };
       this.recognition.onend = () => {
         if (!this.isListening) return;
-        // In wake-word mode, if wake word was active and we got silence, reset it
-        if (this.mode === 'wake-word' && this.wakeWordDetected) {
-          this.wakeWordDetected = false;
-          this.finalTranscript = '';
-          this.interimTranscript = '';
-        }
         setTimeout(() => this.safeStart(), 300);
       };
     }
@@ -154,13 +148,13 @@ export class MicrophoneManager {
 
     if (this.mode === 'wake-word') {
       const text = (this.finalTranscript + interim).toLowerCase();
-      if (!this.wakeWordDetected && /hey ahri|hi ahri|okay ahri|ahri|friday|jarvis/.test(text)) {
+      if (!this.wakeWordDetected && /\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|friday|jarvis)\b/i.test(text)) {
         this.wakeWordDetected = true;
         this.callbacks.onWakeWord?.();
         this.resetSilenceTimer();
       }
       if (this.wakeWordDetected && final) {
-        const clean = final.replace(/^(?:hey\s+|hi\s+|okay\s+)?(?:ahri|friday|jarvis)[,\s]*/i, '').trim();
+        const clean = final.replace(/\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|friday|jarvis)\b[,\s]*/gi, '').trim();
         if (clean) {
           this.callbacks.onTranscript?.(clean, true);
           this.resetSilenceTimer();
@@ -180,7 +174,7 @@ export class MicrophoneManager {
         this.finalTranscript = '';
         this.interimTranscript = '';
       }
-    }, 2000);
+    }, 3000);
   }
 
   private startVolumeLoop() {

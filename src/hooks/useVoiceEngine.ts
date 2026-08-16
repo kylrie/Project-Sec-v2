@@ -77,7 +77,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     }
 
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 4000);
+    const t = setTimeout(() => ctrl.abort(), 12000);
     try {
       const hist = storageService.getConversations();
       const res = await fetch('/api/command', {
