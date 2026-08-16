@@ -16,316 +16,175 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
   const [transcript, setTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
   const [audioLevel, setAudioLevel] = useState(0);
-  const [frequencies, setFrequencies] = useState<number[]>(new Array(16).fill(0));
+  const [frequencies, setFrequencies] = useState(new Array(16).fill(0));
   const [isMicAvailable, setIsMicAvailable] = useState(true);
   const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
 
   const commandStartTimeRef = useRef(0);
   const settingsRef = useRef(settings);
-  const processCommandRef = useRef<(spokenText: string) => Promise<void>>(() => Promise.resolve());
+  const processCommandRef = useRef<(text: string) => Promise<void>>(() => Promise.resolve());
+  const shouldRestartWakeWord = useRef(false);
 
-  useEffect(() => {
-    settingsRef.current = settings;
-  }, [settings]);
+  useEffect(() => { settingsRef.current = settings; }, [settings]);
 
-  // Process User Command with 4-Second Timeout & Instant Local Fallback
+  const speak = useCallback((text: string) => {
+    if (!window.speechSynthesis) return;
+    try {
+      window.speechSynthesis.cancel();
+      if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+      setState('speaking');
+      const u = new SpeechSynthesisUtterance(text.replace(/[*#_`]/g, '').trim());
+      const voices = window.speechSynthesis.getVoices();
+      const s = settingsRef.current;
+      const v = voices.find(x => x.name === s.voiceName) ||
+        voices.find(x => /Google US English|Samantha|Natural|Victoria|Zira|Female/.test(x.name) && x.lang.startsWith('en')) ||
+        voices.find(x => x.lang.startsWith('en')) || voices[0];
+      if (v) u.voice = v;
+      u.rate = s.rate || 1.05; u.pitch = s.pitch || 1.0; u.volume = s.volume || 1.0;
+      u.onend = () => setState('standby');
+      u.onerror = () => setState('standby');
+      window.speechSynthesis.speak(u);
+      const timer = setInterval(() => {
+        if (!window.speechSynthesis.speaking) { clearInterval(timer); return; }
+        window.speechSynthesis.pause(); window.speechSynthesis.resume();
+      }, 8000);
+    } catch (e) { setState('standby'); }
+  }, []);
+
   const processCommand = useCallback(async (spokenText: string) => {
-    const cleanText = spokenText.trim();
-    if (!cleanText) {
-      setState('standby');
-      return;
-    }
-
+    const clean = spokenText.trim();
+    if (!clean) { setState('standby'); return; }
     commandStartTimeRef.current = Date.now();
     setState('processing');
 
-    // 1. Check for Stop / Barge-in word
-    if (/^(stop|never mind|nevermind|cancel|abort|quiet|shut up)$/i.test(cleanText)) {
+    if (/^(stop|never mind|nevermind|cancel|abort|quiet|shut up)$/i.test(clean)) {
       microphoneManager.stop();
       setState('standby');
       if (settingsRef.current.soundEffects) soundEffects.playBargeIn();
       return;
     }
 
-    // 2. Try fast client-side local intent parser
-    const localResult = tryParseLocalIntent(cleanText);
-    if (localResult && localResult.isHandledLocally) {
-      const latency = Date.now() - commandStartTimeRef.current;
-      setLastLatencyMs(latency);
-
-      const userTurn: ConversationTurn = {
-        id: 'turn-' + Math.random().toString(36).substring(2, 9),
-        role: 'user',
-        text: cleanText,
-        timestamp: Date.now(),
-        latencyMs: latency,
-        intent: localResult.intent,
-        actionData: localResult.actionData
-      };
-      onTurnComplete(userTurn);
-
-      const fridayTurn: ConversationTurn = {
-        id: 'turn-' + Math.random().toString(36).substring(2, 9),
-        role: 'friday',
-        text: localResult.spokenReply,
-        timestamp: Date.now(),
-        latencyMs: latency,
-        intent: localResult.intent,
-        actionData: localResult.actionData
-      };
-      onTurnComplete(fridayTurn);
-
-      if (onLocalAction) {
-        onLocalAction(localResult.intent, localResult.actionData);
-      }
-
-      speak(localResult.spokenReply);
+    const local = tryParseLocalIntent(clean);
+    if (local?.isHandledLocally) {
+      const lat = Date.now() - commandStartTimeRef.current;
+      setLastLatencyMs(lat);
+      const userTurn: ConversationTurn = { id: 'turn-' + Math.random().toString(36).slice(2,9), role: 'user', text: clean, timestamp: Date.now(), latencyMs: lat, intent: local.intent, actionData: local.actionData };
+      const fridayTurn: ConversationTurn = { id: 'turn-' + Math.random().toString(36).slice(2,9), role: 'friday', text: local.spokenReply, timestamp: Date.now(), latencyMs: lat, intent: local.intent, actionData: local.actionData };
+      onTurnComplete(userTurn); onTurnComplete(fridayTurn);
+      if (onLocalAction) onLocalAction(local.intent, local.actionData);
+      speak(local.spokenReply);
       return;
     }
 
-    // 3. Server-side Gemini API with 4s AbortController timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
-
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 4000);
     try {
-      const history = storageService.getConversations();
+      const hist = storageService.getConversations();
       const res = await fetch('/api/command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          message: cleanText,
-          context: history.slice(-4).map(h => ({ role: h.role, text: h.text })),
-          personality: settings.personality,
-          userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-        })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
+        body: JSON.stringify({ message: clean, context: hist.slice(-4).map(h => ({ role: h.role, text: h.text })), personality: settings.personality, userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone })
       });
-
-      clearTimeout(timeoutId);
-      const latency = Date.now() - commandStartTimeRef.current;
-      setLastLatencyMs(latency);
-
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
-
+      clearTimeout(t);
+      const lat = Date.now() - commandStartTimeRef.current;
+      setLastLatencyMs(lat);
+      if (!res.ok) throw new Error(`Server ${res.status}`);
       const data = await res.json();
-      const replyText = data.spokenReply || data.reply || "Understood, sir. Systems updated.";
-
-      const userTurn: ConversationTurn = {
-        id: 'turn-' + Math.random().toString(36).substring(2, 9),
-        role: 'user',
-        text: cleanText,
-        timestamp: Date.now(),
-        latencyMs: latency,
-        intent: data.intent,
-        actionData: data.actionData
-      };
-      onTurnComplete(userTurn);
-
-      const fridayTurn: ConversationTurn = {
-        id: 'turn-' + Math.random().toString(36).substring(2, 9),
-        role: 'friday',
-        text: replyText,
-        timestamp: Date.now(),
-        latencyMs: latency,
-        intent: data.intent,
-        actionData: data.actionData
-      };
-      onTurnComplete(fridayTurn);
-
-      if (onLocalAction && data.intent) {
-        onLocalAction(data.intent, data.actionData);
-      }
-
-      speak(replyText);
+      const reply = data.spokenReply || data.reply || "Understood, sir. Systems updated.";
+      onTurnComplete({ id: 'turn-' + Math.random().toString(36).slice(2,9), role: 'user', text: clean, timestamp: Date.now(), latencyMs: lat, intent: data.intent, actionData: data.actionData });
+      onTurnComplete({ id: 'turn-' + Math.random().toString(36).slice(2,9), role: 'friday', text: reply, timestamp: Date.now(), latencyMs: lat, intent: data.intent, actionData: data.actionData });
+      if (onLocalAction && data.intent) onLocalAction(data.intent, data.actionData);
+      speak(reply);
     } catch (err) {
-      clearTimeout(timeoutId);
-      console.warn('Fast fallback applied due to network/api condition:', err);
-      const latency = Date.now() - commandStartTimeRef.current;
-      setLastLatencyMs(latency);
-
-      const fallbackReply = `I've noted that, sir. All core executive functions are operating normally.`;
-
-      const userTurn: ConversationTurn = {
-        id: 'turn-' + Math.random().toString(36).substring(2, 9),
-        role: 'user',
-        text: cleanText,
-        timestamp: Date.now(),
-        latencyMs: latency,
-        intent: 'fallback_response'
-      };
-      onTurnComplete(userTurn);
-
-      const fridayTurn: ConversationTurn = {
-        id: 'turn-' + Math.random().toString(36).substring(2, 9),
-        role: 'friday',
-        text: fallbackReply,
-        timestamp: Date.now(),
-        latencyMs: latency,
-        intent: 'fallback_response'
-      };
-      onTurnComplete(fridayTurn);
-
-      speak(fallbackReply);
+      clearTimeout(t);
+      const lat = Date.now() - commandStartTimeRef.current;
+      setLastLatencyMs(lat);
+      const fb = "I've noted that, sir. All core executive functions are operating normally.";
+      onTurnComplete({ id: 'turn-' + Math.random().toString(36).slice(2,9), role: 'user', text: clean, timestamp: Date.now(), latencyMs: lat, intent: 'fallback_response' });
+      onTurnComplete({ id: 'turn-' + Math.random().toString(36).slice(2,9), role: 'friday', text: fb, timestamp: Date.now(), latencyMs: lat, intent: 'fallback_response' });
+      speak(fb);
     }
-  }, [onTurnComplete, onLocalAction, settings.personality]);
+  }, [onTurnComplete, onLocalAction, settings.personality, speak]);
 
   processCommandRef.current = processCommand;
 
-  // TTS (Text-to-Speech) — unchanged logic
-  const speak = useCallback((text: string) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
-    try {
-      window.speechSynthesis.cancel();
-      if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-      
-      setState('speaking');
-      const cleanText = text.replace(/[*#_`]/g, '').trim();
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      
-      const voices = window.speechSynthesis.getVoices();
-      const currentSettings = settingsRef.current;
-      let selectedVoice = voices.find(v => v.name === currentSettings.voiceName) ||
-        voices.find(v => 
-          (v.name.includes('Google US English') || v.name.includes('Samantha') || 
-           v.name.includes('Natural') || v.name.includes('Victoria') || 
-           v.name.includes('Zira') || v.name.includes('Female')) && v.lang.startsWith('en')
-        ) || voices.find(v => v.lang.startsWith('en')) || voices[0];
-      
-      if (selectedVoice) utterance.voice = selectedVoice;
-      utterance.rate = currentSettings.rate || 1.05;
-      utterance.pitch = currentSettings.pitch || 1.0;
-      utterance.volume = currentSettings.volume || 1.0;
-
-      utterance.onend = () => setState('standby');
-      utterance.onerror = () => setState('standby');
-
-      window.speechSynthesis.speak(utterance);
-
-      // Keep-alive heartbeat for Chromium
-      const keepAliveTimer = setInterval(() => {
-        if (!window.speechSynthesis.speaking) {
-          clearInterval(keepAliveTimer);
-          return;
-        }
-        window.speechSynthesis.pause();
-        window.speechSynthesis.resume();
-      }, 8000);
-    } catch (err) {
-      console.warn('TTS execution error', err);
-      setState('standby');
-    }
-  }, []);
-
-  // Interrupt / Barge-in
   const interrupt = useCallback(() => {
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      try { window.speechSynthesis.cancel(); } catch {}
-      if (settingsRef.current.soundEffects) soundEffects.playBargeIn();
-    }
+    if (window.speechSynthesis) { try { window.speechSynthesis.cancel(); } catch {} }
     microphoneManager.stop();
     setState('interrupted');
-    setTimeout(() => setState((curr) => curr === 'interrupted' ? 'standby' : curr), 300);
+    setTimeout(() => setState('standby'), 300);
   }, []);
 
-  // Start Manual Listening — delegates to MicrophoneManager
   const startManualListening = useCallback(() => {
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      try { window.speechSynthesis.cancel(); } catch {}
-    }
+    interrupt();
     setState('listening');
-    setTranscript('');
-    setInterimTranscript('');
+    setTranscript(''); setInterimTranscript('');
     if (settingsRef.current.soundEffects) soundEffects.playWakeChime();
 
     microphoneManager.start('command', {
       onTranscript: (text: string, isFinal: boolean) => {
-        if (isFinal) {
-          setTranscript(text);
-          setInterimTranscript('');
-          processCommandRef.current(text);
-        } else {
-          setInterimTranscript(text);
-        }
+        if (isFinal) { setTranscript(text); processCommandRef.current(text); }
+        else { setInterimTranscript(text); }
       },
-      onVolume: (level: number) => {
-        setAudioLevel(level);
-        const bars = new Array(16).fill(0).map((_, i) => 
-          Math.max(0, level * (0.5 + Math.random() * 0.5))
-        );
-        setFrequencies(bars);
+      onVolume: (lvl: number) => {
+        setAudioLevel(lvl);
+        setFrequencies(new Array(16).fill(0).map(() => Math.max(0, lvl * (0.5 + Math.random() * 0.5))));
       },
-      onError: (err: string) => {
-        console.error('[VoiceEngine] Mic error:', err);
-        setIsMicAvailable(false);
-        setState('standby');
-      }
+      onError: (err: string) => { console.error(err); setIsMicAvailable(false); setState('standby'); }
     });
-  }, []);
+  }, [interrupt]);
 
-  // Stop Manual Listening
   const stopManualListening = useCallback(() => {
-    const text = microphoneManager.isActive() ? transcript || interimTranscript : '';
+    const txt = microphoneManager.isActive() ? (transcript || interimTranscript) : '';
     microphoneManager.stop();
-    if (text.trim()) {
-      processCommandRef.current(text.trim());
-    } else {
-      setState('standby');
-    }
+    if (txt.trim()) processCommandRef.current(txt.trim());
+    else setState('standby');
   }, [transcript, interimTranscript]);
 
-  // Continuous listening mode
+  // Continuous / wake-word mode with auto-restart guard
   useEffect(() => {
-    if (settings.continuousListening) {
+    if (!settings.continuousListening) {
+      shouldRestartWakeWord.current = false;
+      if (microphoneManager.getMode() === 'wake-word') microphoneManager.stop();
+      return;
+    }
+
+    shouldRestartWakeWord.current = true;
+
+    const tryStart = () => {
+      if (!shouldRestartWakeWord.current) return;
+      if (microphoneManager.isActive()) return;
       microphoneManager.start('wake-word', {
         onWakeWord: () => {
           setState('listening');
           if (settingsRef.current.soundEffects) soundEffects.playWakeChime();
         },
         onTranscript: (text: string, isFinal: boolean) => {
-          if (isFinal) {
-            setTranscript(text);
-            processCommandRef.current(text);
-          } else {
-            setInterimTranscript(text);
-          }
+          if (isFinal && text) processCommandRef.current(text);
         },
-        onVolume: (level: number) => {
-          setAudioLevel(level);
-          const bars = new Array(16).fill(0).map((_, i) => 
-            Math.max(0, level * (0.5 + Math.random() * 0.5))
-          );
-          setFrequencies(bars);
+        onVolume: (lvl: number) => {
+          setAudioLevel(lvl);
+          setFrequencies(new Array(16).fill(0).map(() => Math.max(0, lvl * (0.5 + Math.random() * 0.5))));
         },
-        onError: (err: string) => {
-          console.error('[VoiceEngine] Continuous mode error:', err);
-          setIsMicAvailable(false);
-        }
+        onError: (err: string) => { console.error(err); setIsMicAvailable(false); }
       });
-    } else {
-      if (microphoneManager.getMode() === 'wake-word') {
-        microphoneManager.stop();
-      }
-    }
+    };
+
+    tryStart();
+    const interval = setInterval(() => {
+      if (shouldRestartWakeWord.current && !microphoneManager.isActive()) tryStart();
+    }, 1000);
 
     return () => {
-      if (microphoneManager.getMode() === 'wake-word') {
-        microphoneManager.stop();
-      }
+      shouldRestartWakeWord.current = false;
+      clearInterval(interval);
+      if (microphoneManager.getMode() === 'wake-word') microphoneManager.stop();
     };
   }, [settings.continuousListening]);
 
   return {
-    state,
-    setState,
+    state, setState,
     transcript: transcript || interimTranscript,
-    audioLevel,
-    frequencies,
-    isMicAvailable,
-    lastLatencyMs,
-    startManualListening,
-    stopManualListening,
-    interrupt,
-    speak,
-    processCommand
+    audioLevel, frequencies, isMicAvailable, lastLatencyMs,
+    startManualListening, stopManualListening, interrupt, speak, processCommand
   };
 }
