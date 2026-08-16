@@ -289,6 +289,9 @@ class MeetingService {
         return { success: true };
       }
       this.mediaStream = microphoneManager.getStream();
+      if (this.mediaStream) {
+        this.setupAudioAnalysis(this.mediaStream, onVolume);
+      }
       this.startSpeechRecognition(onTranscript, onVolume);
 
       storageService.logAuditEntry({
