@@ -3,15 +3,7 @@ import { VoiceState, VoiceSettings, ConversationTurn } from '../types/friday';
 import { soundEffects } from '../services/audioEffects';
 import { storageService } from '../services/storage';
 import { tryParseLocalIntent } from '../services/localIntentParser';
-import { VADService } from '../services/vadService';
-
-declare global {
-  interface Window {
-    SpeechRecognition: any;
-    webkitSpeechRecognition: any;
-    webkitAudioContext: any;
-  }
-}
+import { microphoneManager } from '../services/microphoneManager';
 
 interface UseVoiceEngineProps {
   settings: VoiceSettings;
@@ -28,297 +20,13 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
   const [isMicAvailable, setIsMicAvailable] = useState(true);
   const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
 
-  const recognitionRef = useRef<any>(null);
-  const synthesisRef = useRef<SpeechSynthesis | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const micStreamRef = useRef<MediaStream | null>(null);
-  const animFrameRef = useRef<number | null>(null);
-  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const isListeningIntentRef = useRef<boolean>(false);
-  const commandStartTimeRef = useRef<number>(0);
-  const isSettingUpMicRef = useRef<boolean>(false);
-  const lastStateUpdateTimeRef = useRef<number>(0);
-
-  const vadServiceRef = useRef<VADService | null>(null);
-  const transcriptRef = useRef<string>('');
-  const interimTranscriptRef = useRef<string>('');
+  const commandStartTimeRef = useRef(0);
+  const settingsRef = useRef(settings);
   const processCommandRef = useRef<(spokenText: string) => Promise<void>>(() => Promise.resolve());
-  const settingsRef = useRef<VoiceSettings>(settings);
-  const isRecognitionRunningRef = useRef<boolean>(false);
 
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
-
-  // Safe helper to acquire microphone media stream without failing on stale device IDs
-  const getSafeMicStream = useCallback(async (preferredDeviceId?: string): Promise<MediaStream | null> => {
-    if (preferredDeviceId) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { deviceId: { ideal: preferredDeviceId } },
-          video: false
-        });
-        return stream;
-      } catch (err) {
-        console.warn('[VoiceEngine] Preferred mic device unavailable, falling back to default:', err);
-      }
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      return stream;
-    } catch (err: any) {
-      console.error('[VoiceEngine] Complete getUserMedia failure:', err?.message || err);
-      return null;
-    }
-  }, []);
-
-  // Mic warm-up: Pre-request getUserMedia on first user interaction so SpeechRecognition isn't blocked
-  useEffect(() => {
-    let warmed = false;
-    const warmMic = async () => {
-      if (warmed) return;
-      try {
-        const stream = await getSafeMicStream(settingsRef.current?.micDeviceId);
-        if (stream) {
-          micStreamRef.current = stream;
-          setIsMicAvailable(true);
-          warmed = true;
-        } else {
-          setIsMicAvailable(false);
-        }
-      } catch (e: any) {
-        console.warn('[VoiceEngine] Mic warm-up failed:', e?.message);
-        setIsMicAvailable(false);
-      }
-    };
-
-    const handleInteraction = () => {
-      warmMic();
-      if (audioContextRef.current?.state === 'suspended') {
-        audioContextRef.current.resume().catch(() => {});
-      }
-      window.removeEventListener('click', handleInteraction);
-      window.removeEventListener('keydown', handleInteraction);
-    };
-
-    window.addEventListener('click', handleInteraction);
-    window.addEventListener('keydown', handleInteraction);
-
-    return () => {
-      window.removeEventListener('click', handleInteraction);
-      window.removeEventListener('keydown', handleInteraction);
-    };
-  }, [getSafeMicStream]);
-
-  // Initialize SpeechSynthesis and unlock on user interaction
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      synthesisRef.current = window.speechSynthesis;
-      // Pre-fetch voices
-      if (synthesisRef.current && synthesisRef.current.getVoices) {
-        synthesisRef.current.getVoices();
-        synthesisRef.current.onvoiceschanged = () => {
-          synthesisRef.current?.getVoices();
-        };
-      }
-    }
-  }, []);
-
-  // Setup Web Audio Analyser & VAD (Non-blocking with throttled React updates)
-  const setupAudioAnalyser = useCallback(async () => {
-    if (isSettingUpMicRef.current) return;
-
-    try {
-      isSettingUpMicRef.current = true;
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) {
-        isSettingUpMicRef.current = false;
-        return;
-      }
-
-      // 1. Ensure media stream is active
-      if (!micStreamRef.current || !micStreamRef.current.active) {
-        const stream = await getSafeMicStream(settingsRef.current?.micDeviceId);
-        if (!stream) {
-          isSettingUpMicRef.current = false;
-          setIsMicAvailable(false);
-          return;
-        }
-        micStreamRef.current = stream;
-      }
-
-      // 2. Reuse or create singleton AudioContext gracefully
-      let ctx = audioContextRef.current;
-      if (!ctx || ctx.state === 'closed') {
-        try {
-          ctx = new AudioCtx();
-          audioContextRef.current = ctx;
-        } catch (ctxErr) {
-          console.warn('[VoiceEngine] AudioContext creation notice:', ctxErr);
-          isSettingUpMicRef.current = false;
-          return;
-        }
-      }
-
-      if (ctx && ctx.state === 'suspended') {
-        await ctx.resume().catch(() => {});
-      }
-
-      // If analyser is already connected and running, avoid duplicate nodes
-      if (analyserRef.current && ctx.state === 'running') {
-        setIsMicAvailable(true);
-        isSettingUpMicRef.current = false;
-        return;
-      }
-
-      try {
-        const source = ctx.createMediaStreamSource(micStreamRef.current);
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 32;
-        analyser.smoothingTimeConstant = 0.8;
-        source.connect(analyser);
-        analyserRef.current = analyser;
-
-        // Initialize Voice Activity Detection (VAD) with 1.5s automatic silence cut-off
-        if (!vadServiceRef.current) {
-          vadServiceRef.current = new VADService({
-            silenceTimeoutMs: 1500,
-            energyThreshold: 0.02,
-            onSpeechEnd: () => {
-              if (isListeningIntentRef.current) {
-                const pendingText = (transcriptRef.current || interimTranscriptRef.current).trim();
-                if (pendingText) {
-                  console.log('[VAD] 1.5s Silence detected. Auto-submitting spoken command:', pendingText);
-                  isListeningIntentRef.current = false;
-                  processCommandRef.current(pendingText);
-                }
-              }
-            }
-          });
-        }
-        vadServiceRef.current.start(micStreamRef.current, ctx);
-      } catch (nodeErr) {
-        console.warn('[VoiceEngine] MediaStream node setup notice:', nodeErr);
-      }
-
-      const dataArray = new Uint8Array(analyserRef.current ? analyserRef.current.frequencyBinCount : 16);
-
-      // Throttled waveform updater (15fps max into React to prevent UI main-thread freezing!)
-      const updateWaveform = () => {
-        if (analyserRef.current) {
-          try {
-            analyserRef.current.getByteFrequencyData(dataArray);
-            const now = performance.now();
-            if (now - lastStateUpdateTimeRef.current > 66) { // ~15 FPS max
-              lastStateUpdateTimeRef.current = now;
-              let sum = 0;
-              const barValues: number[] = [];
-              for (let i = 0; i < dataArray.length; i++) {
-                sum += dataArray[i];
-                barValues.push(dataArray[i] / 255);
-              }
-              const avg = sum / dataArray.length / 255;
-              setAudioLevel(avg);
-              setFrequencies(barValues);
-            }
-          } catch {}
-        }
-        animFrameRef.current = requestAnimationFrame(updateWaveform);
-      };
-
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      updateWaveform();
-      setIsMicAvailable(true);
-    } catch (err) {
-      console.warn('[VoiceEngine] Microphone analyser notice:', err);
-    } finally {
-      isSettingUpMicRef.current = false;
-    }
-  }, [getSafeMicStream]);
-
-  // Barge-In & Speech Interrupter
-  const interrupt = useCallback(() => {
-    if (synthesisRef.current) {
-      try {
-        synthesisRef.current.cancel();
-      } catch (e) {
-        console.warn('Cancel speech error', e);
-      }
-      if (settingsRef.current.soundEffects) soundEffects.playBargeIn();
-      setState('interrupted');
-      setTimeout(() => {
-        setState((curr) => (curr === 'interrupted' ? 'standby' : curr));
-      }, 300);
-    }
-  }, []);
-
-  // Execute TTS (Fix for Chrome/Windows speech synthesis freeze)
-  const speak = useCallback((text: string) => {
-    if (!synthesisRef.current) return;
-
-    try {
-      // Fix Chrome speech synthesis hang bug
-      window.speechSynthesis.cancel();
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
-
-      setState('speaking');
-
-      const cleanText = text.replace(/[*#_`]/g, '').trim();
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      currentUtteranceRef.current = utterance;
-
-      const currentSettings = settingsRef.current;
-      const voices = synthesisRef.current.getVoices();
-      let selectedVoice = null;
-
-      if (currentSettings.voiceName) {
-        selectedVoice = voices.find(v => v.name === currentSettings.voiceName);
-      }
-      if (!selectedVoice) {
-        selectedVoice = voices.find(v => 
-          (v.name.includes('Google US English') || v.name.includes('Samantha') || v.name.includes('Natural') || v.name.includes('Victoria') || v.name.includes('Zira') || v.name.includes('Female')) && v.lang.startsWith('en')
-        ) || voices.find(v => v.lang.startsWith('en')) || voices[0];
-      }
-
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
-      }
-
-      utterance.rate = currentSettings.rate || 1.05;
-      utterance.pitch = currentSettings.pitch || 1.0;
-      utterance.volume = currentSettings.volume || 1.0;
-
-      utterance.onend = () => {
-        setState('standby');
-        currentUtteranceRef.current = null;
-      };
-
-      utterance.onerror = (e) => {
-        console.warn('TTS ended/cancelled', e);
-        setState('standby');
-        currentUtteranceRef.current = null;
-      };
-
-      synthesisRef.current.speak(utterance);
-
-      // Keep-alive heartbeat for long speech on Chromium browsers
-      const keepAliveTimer = setInterval(() => {
-        if (!synthesisRef.current || !synthesisRef.current.speaking) {
-          clearInterval(keepAliveTimer);
-          return;
-        }
-        window.speechSynthesis.pause();
-        window.speechSynthesis.resume();
-      }, 8000);
-
-    } catch (err) {
-      console.warn('TTS execution error', err);
-      setState('standby');
-    }
-  }, []);
 
   // Process User Command with 4-Second Timeout & Instant Local Fallback
   const processCommand = useCallback(async (spokenText: string) => {
@@ -333,11 +41,13 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
 
     // 1. Check for Stop / Barge-in word
     if (/^(stop|never mind|nevermind|cancel|abort|quiet|shut up)$/i.test(cleanText)) {
-      interrupt();
+      microphoneManager.stop();
+      setState('standby');
+      if (settingsRef.current.soundEffects) soundEffects.playBargeIn();
       return;
     }
 
-    // 2. Try fast client-side local intent parser (<20ms response)
+    // 2. Try fast client-side local intent parser
     const localResult = tryParseLocalIntent(cleanText);
     if (localResult && localResult.isHandledLocally) {
       const latency = Date.now() - commandStartTimeRef.current;
@@ -434,7 +144,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       setLastLatencyMs(latency);
 
       const fallbackReply = `I've noted that, sir. All core executive functions are operating normally.`;
-      
+
       const userTurn: ConversationTurn = {
         id: 'turn-' + Math.random().toString(36).substring(2, 9),
         role: 'user',
@@ -457,271 +167,152 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
 
       speak(fallbackReply);
     }
-  }, [interrupt, onTurnComplete, onLocalAction, settings.personality, speak]);
+  }, [onTurnComplete, onLocalAction, settings.personality]);
 
   processCommandRef.current = processCommand;
 
-  // Effect A: Mount-only. Create the SpeechRecognition instance ONCE.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
+  // TTS (Text-to-Speech) — unchanged logic
+  const speak = useCallback((text: string) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    try {
+      window.speechSynthesis.cancel();
+      if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+      
+      setState('speaking');
+      const cleanText = text.replace(/[*#_`]/g, '').trim();
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      
+      const voices = window.speechSynthesis.getVoices();
+      const currentSettings = settingsRef.current;
+      let selectedVoice = voices.find(v => v.name === currentSettings.voiceName) ||
+        voices.find(v => 
+          (v.name.includes('Google US English') || v.name.includes('Samantha') || 
+           v.name.includes('Natural') || v.name.includes('Victoria') || 
+           v.name.includes('Zira') || v.name.includes('Female')) && v.lang.startsWith('en')
+        ) || voices.find(v => v.lang.startsWith('en')) || voices[0];
+      
+      if (selectedVoice) utterance.voice = selectedVoice;
+      utterance.rate = currentSettings.rate || 1.05;
+      utterance.pitch = currentSettings.pitch || 1.0;
+      utterance.volume = currentSettings.volume || 1.0;
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setIsMicAvailable(false);
-      return;
+      utterance.onend = () => setState('standby');
+      utterance.onerror = () => setState('standby');
+
+      window.speechSynthesis.speak(utterance);
+
+      // Keep-alive heartbeat for Chromium
+      const keepAliveTimer = setInterval(() => {
+        if (!window.speechSynthesis.speaking) {
+          clearInterval(keepAliveTimer);
+          return;
+        }
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      }, 8000);
+    } catch (err) {
+      console.warn('TTS execution error', err);
+      setState('standby');
     }
+  }, []);
 
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = settingsRef.current.language || 'en-US';
-    recognitionRef.current = recognition;
+  // Interrupt / Barge-in
+  const interrupt = useCallback(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch {}
+      if (settingsRef.current.soundEffects) soundEffects.playBargeIn();
+    }
+    microphoneManager.stop();
+    setState('interrupted');
+    setTimeout(() => setState((curr) => curr === 'interrupted' ? 'standby' : curr), 300);
+  }, []);
 
-    recognition.onresult = (event: any) => {
-      let finalStr = '';
-      let interimStr = '';
+  // Start Manual Listening — delegates to MicrophoneManager
+  const startManualListening = useCallback(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch {}
+    }
+    setState('listening');
+    setTranscript('');
+    setInterimTranscript('');
+    if (settingsRef.current.soundEffects) soundEffects.playWakeChime();
 
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const item = event.results[i];
-        const text = item[0].transcript;
-        if (item.isFinal) {
-          finalStr += text;
-        } else {
-          interimStr += text;
-        }
-      }
-
-      const rawIncoming = (finalStr || interimStr).trim();
-      setInterimTranscript(interimStr);
-      interimTranscriptRef.current = interimStr;
-      if (finalStr) {
-        setTranscript(finalStr);
-        transcriptRef.current = finalStr;
-      }
-
-      const lower = rawIncoming.toLowerCase();
-      const wakeTarget = (settingsRef.current.wakeWord || 'Hey Ahri').toLowerCase();
-
-      // Check for wake word trigger if in standby
-      if (!isListeningIntentRef.current && (
-        lower.includes(wakeTarget) || 
-        lower.includes('ahri') || 
-        lower.includes('friday') || 
-        lower.includes('jarvis')
-      )) {
-        isListeningIntentRef.current = true;
-        setState('listening');
-        setupAudioAnalyser();
-        if (settingsRef.current.soundEffects) soundEffects.playWakeChime();
-
-        const match = rawIncoming.match(new RegExp(`(?:hey\\s+)?(?:ahri|friday|jarvis)[,\\s]*(.*)`, 'i'));
-        const remainder = match && match[1] ? match[1].trim() : '';
-        if (remainder && finalStr) {
-          setTranscript(remainder);
-          transcriptRef.current = remainder;
+    microphoneManager.start('command', {
+      onTranscript: (text: string, isFinal: boolean) => {
+        if (isFinal) {
+          setTranscript(text);
           setInterimTranscript('');
-          interimTranscriptRef.current = '';
-          isListeningIntentRef.current = false;
-          processCommandRef.current(remainder);
+          processCommandRef.current(text);
+        } else {
+          setInterimTranscript(text);
         }
-        return;
-      }
-
-      // If active listening mode and final text received
-      if (finalStr && isListeningIntentRef.current) {
-        // Strip any leading wake word if present
-        const cleanedText = finalStr.replace(/^(?:hey\s+)?(?:ahri|friday|jarvis)[,\s]*/i, '').trim() || finalStr.trim();
-        setTranscript(cleanedText);
-        transcriptRef.current = cleanedText;
-        setInterimTranscript('');
-        interimTranscriptRef.current = '';
-        isListeningIntentRef.current = false;
-        processCommandRef.current(cleanedText);
-      }
-    };
-
-    recognition.onstart = () => {
-      isRecognitionRunningRef.current = true;
-      setIsMicAvailable(true);
-    };
-
-    recognition.onerror = (event: any) => {
-      isRecognitionRunningRef.current = false;
-      if (event.error === 'not-allowed' || event.error === 'service-not-allowed' || event.error === 'audio-capture') {
-        console.error('[VoiceEngine] Mic permission or audio capture failed:', event.error);
+      },
+      onVolume: (level: number) => {
+        setAudioLevel(level);
+        const bars = new Array(16).fill(0).map((_, i) => 
+          Math.max(0, level * (0.5 + Math.random() * 0.5))
+        );
+        setFrequencies(bars);
+      },
+      onError: (err: string) => {
+        console.error('[VoiceEngine] Mic error:', err);
         setIsMicAvailable(false);
         setState('standby');
-        return;
       }
-      if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        console.warn('[VoiceEngine] Speech recognition status:', event.error);
-      }
-    };
+    });
+  }, []);
 
-    recognition.onend = () => {
-      isRecognitionRunningRef.current = false;
-      if (settingsRef.current.continuousListening || isListeningIntentRef.current) {
-        setTimeout(() => {
-          try {
-            if (!isRecognitionRunningRef.current && recognitionRef.current) {
-              recognitionRef.current.start();
-              isRecognitionRunningRef.current = true;
-            }
-          } catch (e: any) {
-            if (e?.name === 'InvalidStateError') {
-              isRecognitionRunningRef.current = true;
-            }
+  // Stop Manual Listening
+  const stopManualListening = useCallback(() => {
+    const text = microphoneManager.isActive() ? transcript || interimTranscript : '';
+    microphoneManager.stop();
+    if (text.trim()) {
+      processCommandRef.current(text.trim());
+    } else {
+      setState('standby');
+    }
+  }, [transcript, interimTranscript]);
+
+  // Continuous listening mode
+  useEffect(() => {
+    if (settings.continuousListening) {
+      microphoneManager.start('wake-word', {
+        onWakeWord: () => {
+          setState('listening');
+          if (settingsRef.current.soundEffects) soundEffects.playWakeChime();
+        },
+        onTranscript: (text: string, isFinal: boolean) => {
+          if (isFinal) {
+            setTranscript(text);
+            processCommandRef.current(text);
+          } else {
+            setInterimTranscript(text);
           }
-        }, 50);
-      } else {
-        setState('standby');
-      }
-    };
-
-    // Initial start if continuous listening is already active
-    if (settingsRef.current.continuousListening) {
-      try {
-        recognition.start();
-        isRecognitionRunningRef.current = true;
-      } catch (e) {
-        console.warn('[VoiceEngine] Initial recognition start waiting for user interaction:', e);
+        },
+        onVolume: (level: number) => {
+          setAudioLevel(level);
+          const bars = new Array(16).fill(0).map((_, i) => 
+            Math.max(0, level * (0.5 + Math.random() * 0.5))
+          );
+          setFrequencies(bars);
+        },
+        onError: (err: string) => {
+          console.error('[VoiceEngine] Continuous mode error:', err);
+          setIsMicAvailable(false);
+        }
+      });
+    } else {
+      if (microphoneManager.getMode() === 'wake-word') {
+        microphoneManager.stop();
       }
     }
 
     return () => {
-      try {
-        recognition.stop();
-      } catch {
-        // ignore
-      }
-      isRecognitionRunningRef.current = false;
-      if (vadServiceRef.current) {
-        vadServiceRef.current.stop();
-      }
-      if (animFrameRef.current) {
-        cancelAnimationFrame(animFrameRef.current);
-      }
-      if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach(t => t.stop());
+      if (microphoneManager.getMode() === 'wake-word') {
+        microphoneManager.stop();
       }
     };
-  }, [setupAudioAnalyser]);
-
-  // Effect B: React to language changes without recreating recognition
-  useEffect(() => {
-    const rec = recognitionRef.current;
-    if (!rec) return;
-    if (settings.language) {
-      rec.lang = settings.language;
-    }
-  }, [settings.language]);
-
-  // Effect C: React to continuousListening toggle without recreating recognition
-  useEffect(() => {
-    const rec = recognitionRef.current;
-    if (!rec) return;
-    if (settings.continuousListening) {
-      try {
-        if (!isRecognitionRunningRef.current) {
-          rec.start();
-          isRecognitionRunningRef.current = true;
-        }
-      } catch (e: any) {
-        if (e?.name === 'InvalidStateError') {
-          isRecognitionRunningRef.current = true;
-        } else {
-          console.warn('[VoiceEngine] Continuous recognition waiting for user gesture', e);
-        }
-      }
-    } else {
-      try {
-        rec.stop();
-        isRecognitionRunningRef.current = false;
-      } catch {}
-    }
   }, [settings.continuousListening]);
-
-  // When micDeviceId changes, re-acquire the mic stream with the new device
-  useEffect(() => {
-    const switchMic = async () => {
-      const deviceId = settings.micDeviceId;
-      try {
-        if (micStreamRef.current) {
-          micStreamRef.current.getTracks().forEach(t => t.stop());
-          micStreamRef.current = null;
-        }
-        const stream = await getSafeMicStream(deviceId);
-        if (stream) {
-          micStreamRef.current = stream;
-          setIsMicAvailable(true);
-          if (analyserRef.current) {
-            analyserRef.current = null;
-          }
-          setupAudioAnalyser();
-        } else {
-          setIsMicAvailable(false);
-        }
-      } catch (e: any) {
-        console.warn('[VoiceEngine] Mic device switch failed:', e?.message);
-        setIsMicAvailable(false);
-      }
-    };
-    if (settings.micDeviceId !== undefined) {
-      switchMic();
-    }
-  }, [settings.micDeviceId, getSafeMicStream, setupAudioAnalyser]);
-
-  // Start Manual Listening (Non-blocking, instant response)
-  const startManualListening = useCallback(async () => {
-    isListeningIntentRef.current = true;
-    setState('listening');
-    setTranscript('');
-    transcriptRef.current = '';
-    setInterimTranscript('');
-    interimTranscriptRef.current = '';
-    if (settingsRef.current.soundEffects) soundEffects.playWakeChime();
-
-    if (synthesisRef.current) {
-      try {
-        synthesisRef.current.cancel();
-      } catch (e) {
-        console.warn('Cancel speech error', e);
-      }
-    }
-
-    if (audioContextRef.current?.state === 'suspended') {
-      await audioContextRef.current.resume().catch(() => {});
-    }
-    await setupAudioAnalyser();
-
-    if (recognitionRef.current) {
-      try {
-        const rec = recognitionRef.current;
-        if (!isRecognitionRunningRef.current) {
-          rec.start();
-          isRecognitionRunningRef.current = true;
-        }
-      } catch (e: any) {
-        if (e?.name === 'InvalidStateError') {
-          isRecognitionRunningRef.current = true;
-        } else {
-          console.warn('[VoiceEngine] Manual start error:', e);
-        }
-      }
-    }
-  }, [setupAudioAnalyser]);
-
-  // Stop Manual Listening and Send
-  const stopManualListening = useCallback(() => {
-    const textToProcess = (transcriptRef.current || interimTranscriptRef.current || transcript || interimTranscript).trim();
-    if (textToProcess) {
-      isListeningIntentRef.current = false;
-      processCommand(textToProcess);
-    } else {
-      setState('standby');
-      isListeningIntentRef.current = false;
-    }
-  }, [interimTranscript, transcript, processCommand]);
 
   return {
     state,
@@ -735,7 +326,6 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     stopManualListening,
     interrupt,
     speak,
-    processCommand,
-    setupAudioAnalyser
+    processCommand
   };
 }

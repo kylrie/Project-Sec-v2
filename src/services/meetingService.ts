@@ -10,6 +10,7 @@ import {
 import { googleWorkspaceService } from './googleWorkspace';
 import { storageService } from './storage';
 import { soundEffects } from './audioEffects';
+import { microphoneManager } from './microphoneManager';
 
 const STORAGE_KEYS = {
   MEETING_SESSIONS: 'friday_meeting_sessions_v1',
@@ -281,16 +282,14 @@ class MeetingService {
     onVolume: (db: number) => void
   ): Promise<{ success: boolean; stream?: MediaStream; error?: string }> {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        } 
-      });
-      this.mediaStream = stream;
-      this.setupAudioAnalysis(stream, onVolume);
-      this.startSpeechRecognition(onTranscript);
+      const initialized = await microphoneManager.initialize();
+      if (!initialized) {
+        console.warn('Microphone not available for meeting recording');
+        this.startSpeechRecognition(onTranscript, onVolume);
+        return { success: true };
+      }
+      this.mediaStream = microphoneManager.getStream();
+      this.startSpeechRecognition(onTranscript, onVolume);
 
       storageService.logAuditEntry({
         category: 'Transcript',
@@ -299,10 +298,10 @@ class MeetingService {
         sizeBytes: 1024
       });
 
-      return { success: true, stream };
+      return { success: true, stream: this.mediaStream || undefined };
     } catch (err: any) {
       console.warn('Microphone permission error or unavailable, starting simulated stream', err);
-      this.startSpeechRecognition(onTranscript);
+      this.startSpeechRecognition(onTranscript, onVolume);
       return { success: true };
     }
   }
@@ -377,80 +376,55 @@ class MeetingService {
   }
 
   /**
-   * Speech Recognition Engine (Web Speech API with diarization clustering)
+   * Speech Recognition Engine — now delegates to MicrophoneManager
    */
-  private startSpeechRecognition(onTranscript: (snippet: TranscriptSnippet) => void) {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+  private startSpeechRecognition(
+    onTranscript: (snippet: TranscriptSnippet) => void,
+    onVolume?: (db: number) => void
+  ) {
+    const speakers = this.getSpeakerProfiles();
+    let lastSpeakerIndex = 0;
 
-    try {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = false;
-      recognition.lang = 'en-US';
+    microphoneManager.start('meeting', {
+      onTranscript: (text: string, isFinal: boolean) => {
+        if (!isFinal || !text.trim()) return;
 
-      let lastSpeakerIndex = 0;
-      const speakers = this.getSpeakerProfiles();
+        lastSpeakerIndex = (lastSpeakerIndex + 1) % speakers.length;
+        const currentSpeaker = speakers[lastSpeakerIndex] || speakers[0];
 
-      recognition.onresult = (event: any) => {
-        const results = event.results;
-        const latestResult = results[results.length - 1];
-        if (latestResult && latestResult.isFinal) {
-          const text = latestResult[0].transcript.trim();
-          if (!text) return;
+        const snippet: TranscriptSnippet = {
+          id: 'ts-' + Math.random().toString(36).substring(2, 9),
+          speaker: currentSpeaker.name,
+          speakerId: currentSpeaker.id,
+          timestamp: this.formatTimeSeconds(Math.round(Date.now() / 1000) % 3600),
+          timeSeconds: Math.round(Date.now() / 1000) % 3600,
+          text,
+          confidence: 0.95,
+          pitchLevel: lastSpeakerIndex % 2 === 0 ? 'mid' : 'high'
+        };
 
-          // Simple Diarization heuristic: alternates or groups based on timing
-          lastSpeakerIndex = (lastSpeakerIndex + 1) % speakers.length;
-          const currentSpeaker = speakers[lastSpeakerIndex] || speakers[0];
-
-          const snippet: TranscriptSnippet = {
-            id: 'ts-' + Math.random().toString(36).substring(2, 9),
-            speaker: currentSpeaker.name,
-            speakerId: currentSpeaker.id,
-            timestamp: this.formatTimeSeconds(Math.round(Date.now() / 1000) % 3600),
-            timeSeconds: Math.round(Date.now() / 1000) % 3600,
-            text,
-            confidence: latestResult[0].confidence || 0.95,
-            pitchLevel: lastSpeakerIndex % 2 === 0 ? 'mid' : 'high'
-          };
-
-          onTranscript(snippet);
+        onTranscript(snippet);
+      },
+      onVolume: (level: number) => {
+        if (onVolume) {
+          onVolume(Math.min(100, Math.round(level * 100)));
         }
-      };
-
-      recognition.onerror = (e: any) => {
-        console.warn('Speech recognition warning:', e);
-      };
-
-      recognition.start();
-      this.activeRecognition = recognition;
-    } catch (e) {
-      console.warn('Could not launch SpeechRecognition', e);
-    }
+      },
+      onError: (err: string) => {
+        console.warn('[MeetingService] Speech recognition error:', err);
+      }
+    });
   }
 
   /**
    * Stop all active audio streams and speech recognition
    */
   public stopRecording() {
-    if (this.activeRecognition) {
-      try {
-        this.activeRecognition.stop();
-      } catch {}
-      this.activeRecognition = null;
+    if (microphoneManager.getMode() === 'meeting') {
+      microphoneManager.stop();
     }
-
-    if (this.mediaStream) {
-      this.mediaStream.getTracks().forEach(track => track.stop());
-      this.mediaStream = null;
-    }
-
-    if (this.audioContext && this.audioContext.state !== 'closed') {
-      try {
-        this.audioContext.close();
-      } catch {}
-      this.audioContext = null;
-    }
+    this.activeRecognition = null;
+    this.mediaStream = null;
   }
 
   /**
