@@ -30,30 +30,74 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
   const processCommandRef = useRef<(text: string) => Promise<void>>(() => Promise.resolve());
   const shouldRestartWakeWord = useRef<boolean>(false);
 
-  useEffect(() => { settingsRef.current = settings; }, [settings]);
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const speak = useCallback((text: string) => {
-    if (!window.speechSynthesis) return;
+    const cleanText = text.replace(/[*#_`]/g, '').trim();
+    if (!cleanText) return;
+
+    // Cancel previous audio or utterance
+    if (activeAudioRef.current) {
+      try {
+        activeAudioRef.current.pause();
+        activeAudioRef.current.currentTime = 0;
+      } catch {}
+      activeAudioRef.current = null;
+    }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch {}
+    }
+
+    setState('speaking');
+
+    // 1. Primary: Google Neural Audio via /api/tts
     try {
-      window.speechSynthesis.cancel();
-      if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-      setState('speaking');
-      const u = new SpeechSynthesisUtterance(text.replace(/[*#_`]/g, '').trim());
-      const voices = window.speechSynthesis.getVoices();
-      const s = settingsRef.current;
-      const v = voices.find(x => x.name === s.voiceName) ||
-        voices.find(x => /Google US English|Samantha|Natural|Victoria|Zira|Female/.test(x.name) && x.lang.startsWith('en')) ||
-        voices.find(x => x.lang.startsWith('en')) || voices[0];
-      if (v) u.voice = v;
-      u.rate = s.rate || 1.05; u.pitch = s.pitch || 1.0; u.volume = s.volume || 1.0;
-      u.onend = () => setState('standby');
-      u.onerror = () => setState('standby');
-      window.speechSynthesis.speak(u);
-      const timer = setInterval(() => {
-        if (!window.speechSynthesis.speaking) { clearInterval(timer); return; }
-        window.speechSynthesis.pause(); window.speechSynthesis.resume();
-      }, 8000);
-    } catch (e) { setState('standby'); }
+      const audio = new Audio(`/api/tts?text=${encodeURIComponent(cleanText)}`);
+      activeAudioRef.current = audio;
+      audio.playbackRate = 1.04;
+
+      audio.onended = () => {
+        activeAudioRef.current = null;
+        setState('standby');
+      };
+
+      audio.onerror = () => {
+        console.warn('[VoiceEngine] Neural TTS playback failed, falling back to Web Speech API');
+        activeAudioRef.current = null;
+        fallbackBrowserSpeak(cleanText);
+      };
+
+      audio.play().catch(() => {
+        fallbackBrowserSpeak(cleanText);
+      });
+    } catch {
+      fallbackBrowserSpeak(cleanText);
+    }
+
+    function fallbackBrowserSpeak(txt: string) {
+      if (!window.speechSynthesis) {
+        setState('standby');
+        return;
+      }
+      try {
+        if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+        const u = new SpeechSynthesisUtterance(txt);
+        const voices = window.speechSynthesis.getVoices();
+        const s = settingsRef.current;
+        const v = voices.find(x => x.name === s.voiceName) ||
+          voices.find(x => /Google|Natural|Jenny|Aria|Samantha|Zira/i.test(x.name) && x.lang.startsWith('en')) ||
+          voices.find(x => x.lang.startsWith('en')) || voices[0];
+        if (v) u.voice = v;
+        u.rate = s.rate || 1.05;
+        u.pitch = s.pitch || 1.0;
+        u.volume = s.volume || 1.0;
+        u.onend = () => setState('standby');
+        u.onerror = () => setState('standby');
+        window.speechSynthesis.speak(u);
+      } catch {
+        setState('standby');
+      }
+    }
   }, []);
 
   const processCommand = useCallback(async (spokenText: string) => {
@@ -184,6 +228,13 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
   processCommandRef.current = processCommand;
 
   const interrupt = useCallback(() => {
+    if (activeAudioRef.current) {
+      try {
+        activeAudioRef.current.pause();
+        activeAudioRef.current.currentTime = 0;
+      } catch {}
+      activeAudioRef.current = null;
+    }
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       try { window.speechSynthesis.cancel(); } catch {}
       if (settingsRef.current.soundEffects) soundEffects.playBargeIn();
@@ -195,6 +246,13 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
   }, []);
 
   const startManualListening = useCallback(() => {
+    if (activeAudioRef.current) {
+      try {
+        activeAudioRef.current.pause();
+        activeAudioRef.current.currentTime = 0;
+      } catch {}
+      activeAudioRef.current = null;
+    }
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       try { window.speechSynthesis.cancel(); } catch {}
     }
@@ -205,11 +263,11 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
 
     microphoneManager.start('command', {
       onTranscript: (text: string, isFinal: boolean) => {
-        if (isFinal) {
+        if (isFinal && text) {
           setTranscript(text);
           setInterimTranscript('');
           processCommandRef.current(text);
-        } else {
+        } else if (!isFinal) {
           setInterimTranscript(text);
         }
       },
@@ -225,11 +283,15 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     });
   }, []);
 
-  const stopManualListening = useCallback(() => {
-    const txt = microphoneManager.isActive() ? (transcript || interimTranscript) : '';
-    microphoneManager.stop();
-    if (txt.trim()) processCommandRef.current(txt.trim());
-    else setState('standby');
+  const stopManualListening = useCallback(async () => {
+    const activeText = transcript || interimTranscript;
+    if (activeText.trim()) {
+      microphoneManager.stop();
+      processCommandRef.current(activeText.trim());
+    } else {
+      setState('processing');
+      await microphoneManager.stop();
+    }
   }, [transcript, interimTranscript]);
 
   // Continuous / wake-word mode with auto-restart guard

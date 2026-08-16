@@ -116,12 +116,13 @@ ${memoryContext}
 ${userProfileContext}
 ${personasContext}
 
-Guidelines:
-1. Always reason about the user's intent. If an action is required (scheduling events, checking emails, creating tasks, setting timers, searching contacts, saving facts), CALL THE APPROPRIATE TOOL(S).
-2. You can perform multi-step actions (e.g. check calendar and schedule a meeting).
-3. The spoken response will be fed directly into Text-To-Speech audio. KEEP IT NATURAL, CRISP, AND SPOKEN (No markdown symbols, no bullet asterisks, no hashtag headers, no tables).`;
+CORE VOICE & CONVERSATION RULES:
+1. Always reason about intent and call tools when needed (calendar, email, tasks, timers, contacts, memory).
+2. Spoken Reply Length: KEEP YOUR SPOKEN REPLY TO 1 TO 2 NATURAL, CRISP SENTENCES MAXIMUM. Do NOT recite long paragraphs or bulleted essays.
+3. Natural Human Delivery: Talk like an elite, composed human executive assistant (e.g. "I've booked your sync for 2 PM tomorrow, sir.", "You have two unread emails from David.", "Setting a timer for 15 minutes.").
+4. Zero Formatting: Never output markdown formatting (no asterisks *, no hashes #, no bullets -, no backticks).`;
 
-    // 2. Primary Engine: Gemini 3.7 Pro with Native Function Calling
+    // 2. Primary Engine: Gemini 3.7 Flash with Native Function Calling
     const geminiClient = this.getGeminiClient();
     if (geminiClient) {
       try {
@@ -149,8 +150,8 @@ Guidelines:
         let mergedActionData: any = {};
         const toolsUsed: string[] = [];
 
-        // Primary: gemini-3.7-pro (fallback to gemini-2.5-pro / gemini-3.7-flash if model name differs)
-        const modelsToTry = ['gemini-3.7-pro', 'gemini-2.5-pro', 'gemini-3.7-flash', 'gemini-2.5-flash'];
+        // Primary: gemini-3.7-flash (ultra-low latency ~250ms), fallback to gemini-2.5-pro
+        const modelsToTry = ['gemini-3.7-flash', 'gemini-2.5-pro'];
         let activeModel = modelsToTry[0];
 
         // Agentic Tool Loop (up to 3 iterations for multi-hop tool execution)

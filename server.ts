@@ -277,28 +277,37 @@ async function startServer() {
       if (key && key !== "MY_GEMINI_API_KEY" && key.trim().length > 5) {
         const ai = new GoogleGenAI({ apiKey: key });
         const cleanMime = mimeType.split(";")[0];
-        const result = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: [
-            {
-              role: "user",
-              parts: [
+        const modelsToTry = ["gemini-3.7-flash", "gemini-2.5-pro"];
+        let transcript = "";
+        for (const model of modelsToTry) {
+          try {
+            const result = await ai.models.generateContent({
+              model,
+              contents: [
                 {
-                  inlineData: {
-                    mimeType: cleanMime,
-                    data: audioBase64
-                  }
-                },
-                {
-                  text: "Transcribe the user's speech in this audio clip verbatim. Return ONLY the transcribed words with proper punctuation, without any introductory or concluding comments. If silence or inaudible, return empty string."
+                  role: "user",
+                  parts: [
+                    {
+                      inlineData: {
+                        mimeType: cleanMime,
+                        data: audioBase64
+                      }
+                    },
+                    {
+                      text: "Transcribe the user's speech in this audio clip verbatim. Return ONLY the transcribed words with proper punctuation, without any introductory or concluding comments. If silence or inaudible, return empty string."
+                    }
+                  ]
                 }
               ]
-            }
-          ]
-        });
+            });
+            transcript = result.text?.replace(/^["'`]|["'`]$/g, '').trim() || "";
+            if (transcript) break;
+          } catch (modelErr) {
+            continue;
+          }
+        }
 
-        const transcript = result.text?.replace(/^["'`]|["'`]$/g, '').trim() || "";
-        return res.json({ transcript, source: "gemini-flash" });
+        return res.json({ transcript, source: "gemini" });
       }
 
       // OpenAI Whisper fallback
@@ -318,6 +327,35 @@ async function startServer() {
     } catch (err: any) {
       console.warn("[Server] Audio transcription error:", err?.message || err);
       res.json({ transcript: "", error: err?.message });
+    }
+  });
+
+  // High-Fidelity Google Neural Voice Text-to-Speech Streaming Endpoint
+  app.get("/api/tts", async (req, res) => {
+    try {
+      const rawText = ((req.query.text as string) || "").replace(/[*#_`]/g, " ").trim();
+      if (!rawText) return res.status(400).send("Text parameter is required");
+      
+      const cleanText = rawText.slice(0, 300);
+      const googleUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=en-US&client=tw-ob&q=${encodeURIComponent(cleanText)}`;
+      
+      const audioRes = await fetch(googleUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+      
+      if (!audioRes.ok) {
+        throw new Error(`Google TTS request failed with status: ${audioRes.status}`);
+      }
+      
+      const arrayBuffer = await audioRes.arrayBuffer();
+      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.send(Buffer.from(arrayBuffer));
+    } catch (err: any) {
+      console.warn("[TTS Endpoint] Error:", err?.message || err);
+      res.status(500).json({ error: err?.message });
     }
   });
 

@@ -4,11 +4,9 @@
  * Architecture:
  * - ONE getUserMedia stream (shared across VAD, visualizer, and speech)
  * - ONE SpeechRecognition instance (shared across wake-word, commands, and meeting)
- * - Parallel MediaRecorder audio buffer with AI STT fallback (for Electron/offline)
+ * - Real-time Voice Activity Detection (VAD) with automatic 750ms silence cutoff
+ * - Parallel MediaRecorder audio buffer with ultra-fast Gemini Flash STT
  * - Mode-based routing: 'idle' | 'wake-word' | 'command' | 'meeting'
- * 
- * The browser only allows ONE active SpeechRecognition at a time.
- * This manager enforces that rule so modules stop fighting each other.
  */
 
 export type MicMode = 'idle' | 'wake-word' | 'command' | 'meeting';
@@ -31,10 +29,13 @@ export class MicrophoneManager {
   private mode: MicMode = 'idle';
   private isListening = false;
   private isRecognitionRunning = false;
+  private isTranscribing = false;
   private consecutiveNetworkErrors = 0;
   private callbacks: MicCallbacks = {};
   private animFrameId: number | null = null;
   private silenceTimer: any = null;
+  private autoSilenceTimer: any = null;
+  private hasDetectedSpeech = false;
   private wakeWordDetected = false;
   private interimTranscript = '';
   private finalTranscript = '';
@@ -63,8 +64,8 @@ export class MicrophoneManager {
         }
         const source = this.audioContext.createMediaStreamSource(this.stream);
         this.analyser = this.audioContext.createAnalyser();
-        this.analyser.fftSize = 32;
-        this.analyser.smoothingTimeConstant = 0.8;
+        this.analyser.fftSize = 64;
+        this.analyser.smoothingTimeConstant = 0.6;
         source.connect(this.analyser);
       }
       return true;
@@ -86,10 +87,12 @@ export class MicrophoneManager {
       await this.stop();
     }
 
-    if (this.silenceTimer) clearTimeout(this.silenceTimer);
+    this.clearAllTimers();
     this.mode = mode;
     this.callbacks = callbacks;
     this.wakeWordDetected = false;
+    this.hasDetectedSpeech = false;
+    this.isTranscribing = false;
     this.finalTranscript = '';
     this.interimTranscript = '';
 
@@ -123,7 +126,7 @@ export class MicrophoneManager {
         if (e.error === 'network') {
           this.consecutiveNetworkErrors++;
           if (this.consecutiveNetworkErrors === 1) {
-            console.info('[MicManager] Web Speech API network offline in this environment. Parallel AI audio buffer active.');
+            console.info('[MicManager] Native Web Speech API offline. Ultra-low latency neural STT active.');
           }
         } else {
           this.consecutiveNetworkErrors = 0;
@@ -137,7 +140,7 @@ export class MicrophoneManager {
         this.isRecognitionRunning = false;
         if (!this.isListening) return;
         const retryDelay = this.consecutiveNetworkErrors > 0
-          ? Math.min(8000, 2000 + this.consecutiveNetworkErrors * 1000)
+          ? Math.min(6000, 1500 + this.consecutiveNetworkErrors * 500)
           : 300;
         setTimeout(() => this.safeStart(), retryDelay);
       };
@@ -166,7 +169,7 @@ export class MicrophoneManager {
           this.recordedChunks.push(e.data);
         }
       };
-      this.mediaRecorder.start(250);
+      this.mediaRecorder.start(100);
     } catch (e) {
       console.warn('[MicManager] MediaRecorder notice:', e);
     }
@@ -174,9 +177,11 @@ export class MicrophoneManager {
 
   private async stopMediaRecorderAndTranscribe(): Promise<string | null> {
     if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') return null;
+    this.isTranscribing = true;
     return new Promise((resolve) => {
       this.mediaRecorder!.onstop = async () => {
         if (this.recordedChunks.length === 0) {
+          this.isTranscribing = false;
           resolve(null);
           return;
         }
@@ -184,7 +189,8 @@ export class MicrophoneManager {
           const mime = this.mediaRecorder?.mimeType || 'audio/webm';
           const blob = new Blob(this.recordedChunks, { type: mime });
           this.recordedChunks = [];
-          if (blob.size < 500) {
+          if (blob.size < 400) {
+            this.isTranscribing = false;
             resolve(null);
             return;
           }
@@ -197,6 +203,7 @@ export class MicrophoneManager {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ audioBase64: base64Audio, mimeType: mime })
               });
+              this.isTranscribing = false;
               if (res.ok) {
                 const data = await res.json();
                 resolve(data.transcript || null);
@@ -204,17 +211,20 @@ export class MicrophoneManager {
                 resolve(null);
               }
             } catch {
+              this.isTranscribing = false;
               resolve(null);
             }
           };
           reader.readAsDataURL(blob);
         } catch {
+          this.isTranscribing = false;
           resolve(null);
         }
       };
       try {
         this.mediaRecorder!.stop();
       } catch {
+        this.isTranscribing = false;
         resolve(null);
       }
     });
@@ -279,16 +289,47 @@ export class MicrophoneManager {
   private startVolumeLoop() {
     if (!this.analyser) return;
     const data = new Uint8Array(this.analyser.frequencyBinCount);
+
     const loop = () => {
       if (!this.isListening || !this.analyser) return;
       this.analyser.getByteFrequencyData(data);
       let sum = 0;
       for (let i = 0; i < data.length; i++) sum += data[i];
-      this.callbacks.onVolume?.(sum / data.length / 255);
+      const volume = sum / data.length / 255;
+      this.callbacks.onVolume?.(volume);
+
+      // Adaptive Real-Time Voice Activity Detection (VAD)
+      if (this.mode === 'command') {
+        if (volume > 0.035) {
+          // Voice activity detected
+          this.hasDetectedSpeech = true;
+          if (this.autoSilenceTimer) {
+            clearTimeout(this.autoSilenceTimer);
+            this.autoSilenceTimer = null;
+          }
+        } else if (this.hasDetectedSpeech && volume < 0.02) {
+          // User was speaking, now paused — trigger automatic 750ms silence cutoff
+          if (!this.autoSilenceTimer && !this.isTranscribing) {
+            this.autoSilenceTimer = setTimeout(async () => {
+              if (this.mode === 'command' && this.hasDetectedSpeech) {
+                await this.stop();
+              }
+            }, 750);
+          }
+        }
+      }
+
       this.animFrameId = requestAnimationFrame(loop);
     };
+
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
     this.animFrameId = requestAnimationFrame(loop);
+  }
+
+  private clearAllTimers() {
+    if (this.silenceTimer) { clearTimeout(this.silenceTimer); this.silenceTimer = null; }
+    if (this.autoSilenceTimer) { clearTimeout(this.autoSilenceTimer); this.autoSilenceTimer = null; }
+    if (this.animFrameId) { cancelAnimationFrame(this.animFrameId); this.animFrameId = null; }
   }
 
   async stop() {
@@ -297,8 +338,9 @@ export class MicrophoneManager {
     const previousMode = this.mode;
     this.mode = 'idle';
     this.wakeWordDetected = false;
-    if (this.silenceTimer) clearTimeout(this.silenceTimer);
-    if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
+    this.hasDetectedSpeech = false;
+    this.clearAllTimers();
+
     if (this.recognition) {
       try { this.recognition.stop(); } catch {}
     }
