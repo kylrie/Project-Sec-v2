@@ -94,12 +94,26 @@ export class MicrophoneManager {
   private constructor() {}
 
   async initialize(): Promise<boolean> {
-    if (this.stream && this.stream.active && this.audioContext && this.audioContext.state !== 'closed') return true;
+    if (this.stream && this.stream.active && this.audioContext && this.audioContext.state !== 'closed' && (this.workletNode || this.processorNode)) {
+      return true;
+    }
+
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        video: false
-      });
+      // Clean up previous nodes and context before creating a new one
+      if (this.workletNode) { try { this.workletNode.disconnect(); } catch {} this.workletNode = null; }
+      if (this.processorNode) { try { this.processorNode.disconnect(); } catch {} this.processorNode = null; }
+      if (this.analyser) { try { this.analyser.disconnect(); } catch {} this.analyser = null; }
+      if (this.audioContext && this.audioContext.state !== 'closed') {
+        try { await this.audioContext.close(); } catch {}
+        this.audioContext = null;
+      }
+
+      if (!this.stream || !this.stream.active) {
+        this.stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: false
+        });
+      }
       
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioCtx) {
@@ -114,14 +128,12 @@ export class MicrophoneManager {
         this.analyser.smoothingTimeConstant = 0.6;
         source.connect(this.analyser);
 
-        // High-Performance AudioWorkletNode PCM Stream Processor (replaces deprecated ScriptProcessorNode)
         const onPcmChunk = (chunk: Float32Array) => {
           if (!this.isListening) return;
           const copy = new Float32Array(chunk);
           if (this.hasDetectedSpeech) {
             this.activePcmBuffers.push(copy);
           } else {
-            // Keep ~1 second of pre-roll PCM in circular queue
             this.rollingPcmBuffers.push(copy);
             if (this.rollingPcmBuffers.length > 80) {
               this.rollingPcmBuffers.shift();
@@ -131,29 +143,13 @@ export class MicrophoneManager {
 
         if (this.audioContext.audioWorklet) {
           try {
-            const workletCode = `
-              class PcmRecorderProcessor extends AudioWorkletProcessor {
-                process(inputs) {
-                  const input = inputs[0];
-                  if (input && input[0] && input[0].length > 0) {
-                    this.port.postMessage(input[0]);
-                  }
-                  return true;
-                }
-              }
-              registerProcessor('pcm-recorder-processor', PcmRecorderProcessor);
-            `;
-            const blob = new Blob([workletCode], { type: 'application/javascript' });
-            const url = URL.createObjectURL(blob);
-            await this.audioContext.audioWorklet.addModule(url);
-            URL.revokeObjectURL(url);
-
+            await this.audioContext.audioWorklet.addModule('/pcm-processor.js');
             this.workletNode = new AudioWorkletNode(this.audioContext, 'pcm-recorder-processor');
             this.workletNode.port.onmessage = (e) => onPcmChunk(e.data);
             source.connect(this.workletNode);
             this.workletNode.connect(this.audioContext.destination);
           } catch (workletErr) {
-            console.warn('[MicManager] AudioWorklet init notice, using fallback processor:', workletErr);
+            console.warn('[MicManager] AudioWorklet notice, using fallback processor:', workletErr);
             this.processorNode = this.audioContext.createScriptProcessor(2048, 1, 1);
             this.processorNode.onaudioprocess = (e) => onPcmChunk(e.inputBuffer.getChannelData(0));
             source.connect(this.processorNode);
