@@ -37,6 +37,7 @@ export class SecretaryBrain {
     sessionId?: string;
     personality?: 'professional' | 'concise' | 'warm' | 'executive';
     userTimezone?: string;
+    userContext?: string;
   }): Promise<BrainProcessResult> {
     const startTime = Date.now();
     const sessionId = params.sessionId || 'default';
@@ -51,6 +52,8 @@ export class SecretaryBrain {
       ? `\nKNOWN EXECUTIVE FACTS & PREFERENCES:\n${memoryFacts.map(f => `- ${f.fact_key}: ${f.fact_value}`).join('\n')}`
       : '';
 
+    const userProfileContext = params.userContext ? `\n${params.userContext}` : '';
+
     const personalityPrompts: Record<string, string> = {
       professional: "You are AHRI (Project Ahri), an advanced executive AI secretary and right-hand intelligence. Be impeccably professional, highly competent, calm, and proactive.",
       concise: "You are AHRI. Be ultra-compact, telegraphic, and direct. Answer in 1-2 sharp, decisive sentences. No filler words.",
@@ -61,6 +64,7 @@ export class SecretaryBrain {
     const systemPrompt = `${personalityPrompts[personality] || personalityPrompts.professional}
 Current Server Time: ${new Date().toLocaleString('en-US', { timeZone: timezone })} (${timezone}).
 ${memoryContext}
+${userProfileContext}
 
 Guidelines:
 1. Always reason about the user's intent. If an action is required (scheduling events, checking emails, creating tasks, setting timers, searching contacts, saving facts), CALL THE APPROPRIATE TOOL(S).

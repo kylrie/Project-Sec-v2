@@ -167,7 +167,7 @@ async function startServer() {
   // Intent parsing and conversational AI powered by Gemini 3.7 Pro & Supabase/SQLite Memory
   app.post("/api/command", async (req, res) => {
     try {
-      const { message, sessionId = "default", personality = "professional", userTimezone = "UTC" } = req.body;
+      const { message, sessionId = "default", personality = "professional", userTimezone = "UTC", userContext } = req.body;
       const userId = req.body.userId || (req as any).user?.uid || "anonymous";
       
       // Process with Gemini 3.7 Pro AI Brain
@@ -175,7 +175,8 @@ async function startServer() {
         message,
         sessionId,
         personality,
-        userTimezone
+        userTimezone,
+        userContext
       });
 
       // Save to Supabase Conversations
@@ -218,6 +219,46 @@ async function startServer() {
         spokenReply: "I encountered a processing anomaly, but local protocols remain active.",
         intent: "error"
       });
+    }
+  });
+
+  // Fact & preference extraction for long-term user memory
+  app.post("/api/extract-facts", async (req, res) => {
+    try {
+      const { prompt } = req.body;
+      if (!prompt) return res.json([]);
+
+      const key = process.env.GEMINI_API_KEY;
+      if (!key || key === 'MY_GEMINI_API_KEY' || key.trim().length <= 5) {
+        return res.json([]);
+      }
+
+      const genAI = new GoogleGenAI({ apiKey: key });
+      const modelsToTry = ['gemini-2.5-flash', 'gemini-3.7-flash', 'gemini-2.5-pro', 'gemini-3.7-pro'];
+      let extracted: any[] = [];
+
+      for (const model of modelsToTry) {
+        try {
+          const result = await genAI.models.generateContent({
+            model,
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: {
+              responseMimeType: 'application/json',
+              temperature: 0.1
+            }
+          });
+          const text = result.text?.trim() || '[]';
+          extracted = JSON.parse(text);
+          if (Array.isArray(extracted)) break;
+        } catch {
+          continue;
+        }
+      }
+
+      res.json(Array.isArray(extracted) ? extracted : []);
+    } catch (err: any) {
+      console.warn('[Server] Fact extraction error:', err.message);
+      res.json([]);
     }
   });
 

@@ -4,6 +4,7 @@ import { soundEffects } from '../services/audioEffects';
 import { storageService } from '../services/storage';
 import { tryParseLocalIntent } from '../services/localIntentParser';
 import { microphoneManager } from '../services/microphoneManager';
+import { userMemory } from '../services/userMemory';
 
 interface UseVoiceEngineProps {
   settings: VoiceSettings;
@@ -73,6 +74,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       onTurnComplete(userTurn); onTurnComplete(fridayTurn);
       if (onLocalAction) onLocalAction(local.intent, local.actionData);
       speak(local.spokenReply);
+      userMemory.learnFromConversation([userTurn, fridayTurn]);
       return;
     }
 
@@ -82,7 +84,13 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       const hist = storageService.getConversations();
       const res = await fetch('/api/command', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
-        body: JSON.stringify({ message: clean, context: hist.slice(-4).map(h => ({ role: h.role, text: h.text })), personality: settings.personality, userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone })
+        body: JSON.stringify({
+          message: clean,
+          userContext: userMemory.buildContextPrompt(),
+          context: hist.slice(-4).map(h => ({ role: h.role, text: h.text })),
+          personality: settings.personality,
+          userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        })
       });
       clearTimeout(t);
       const lat = Date.now() - commandStartTimeRef.current;
@@ -90,10 +98,17 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       if (!res.ok) throw new Error(`Server ${res.status}`);
       const data = await res.json();
       const reply = data.spokenReply || data.reply || "Understood, sir. Systems updated.";
-      onTurnComplete({ id: 'turn-' + Math.random().toString(36).slice(2,9), role: 'user', text: clean, timestamp: Date.now(), latencyMs: lat, intent: data.intent, actionData: data.actionData });
-      onTurnComplete({ id: 'turn-' + Math.random().toString(36).slice(2,9), role: 'friday', text: reply, timestamp: Date.now(), latencyMs: lat, intent: data.intent, actionData: data.actionData });
+      const userTurn: ConversationTurn = { id: 'turn-' + Math.random().toString(36).slice(2,9), role: 'user', text: clean, timestamp: Date.now(), latencyMs: lat, intent: data.intent, actionData: data.actionData };
+      const fridayTurn: ConversationTurn = { id: 'turn-' + Math.random().toString(36).slice(2,9), role: 'friday', text: reply, timestamp: Date.now(), latencyMs: lat, intent: data.intent, actionData: data.actionData };
+      onTurnComplete(userTurn);
+      onTurnComplete(fridayTurn);
       if (onLocalAction && data.intent) onLocalAction(data.intent, data.actionData);
       speak(reply);
+      userMemory.learnFromConversation([
+        ...hist.slice(-4),
+        userTurn,
+        fridayTurn
+      ]);
     } catch (err) {
       clearTimeout(t);
       const lat = Date.now() - commandStartTimeRef.current;
