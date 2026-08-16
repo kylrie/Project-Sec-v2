@@ -785,6 +785,43 @@ Return JSON:
     }
   });
 
+  // High-Precision Neural Audio Transcription (Fallback when WebSpeech unavailable)
+  app.post("/api/transcribe-audio", async (req, res) => {
+    try {
+      const { audioBase64, mimeType } = req.body || {};
+      if (!audioBase64) {
+        return res.status(400).json({ error: "Missing audioBase64 payload" });
+      }
+
+      const key = process.env.GEMINI_API_KEY;
+      if (!key || key.length < 10) {
+        return res.status(500).json({ error: "GEMINI_API_KEY not configured" });
+      }
+
+      const ai = new GoogleGenAI({ apiKey: key });
+      const response = await ai.models.generateContent({
+        model: "gemini-3.7-flash",
+        contents: [
+          {
+            inlineData: {
+              mimeType: mimeType || "audio/webm",
+              data: audioBase64
+            }
+          },
+          {
+            text: "Transcribe the spoken words in this audio recording accurately. Return ONLY the exact transcribed text as plain string. If there is no speech, return nothing."
+          }
+        ]
+      });
+
+      const transcript = (response.text || "").trim();
+      res.json({ transcript });
+    } catch (err: any) {
+      console.warn("[Audio Transcribe] API Error:", err?.message || err);
+      res.status(500).json({ error: "Transcription failed", details: err?.message });
+    }
+  });
+
   // Predictive Meeting Preparation: Auto-surfaces relevant emails, prior minutes & briefing docs
   app.post("/api/proactive/predictive-prep", async (req, res) => {
     const meetingTitle = req.body?.meetingTitle || "Executive Session";

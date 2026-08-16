@@ -30,6 +30,7 @@ export class MicrophoneManager {
   private isListening = false;
   private isRecognitionRunning = false;
   private isTranscribing = false;
+  private useNeuralVadFallback = false;
   private consecutiveNetworkErrors = 0;
   private callbacks: MicCallbacks = {};
   private animFrameId: number | null = null;
@@ -116,19 +117,20 @@ export class MicrophoneManager {
       };
 
       this.recognition.onerror = (e: any) => {
-        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        if (e.error === 'service-not-allowed' || e.error === 'network') {
+          console.info('[MicManager] WebSpeech unavailable in standalone environment. Ultra-fast Neural VAD active.');
+          this.useNeuralVadFallback = true;
+          this.isRecognitionRunning = false;
+          return;
+        }
+        if (e.error === 'not-allowed') {
           console.error('[MicManager] Permission denied:', e.error);
           this.callbacks.onError?.('Microphone permission denied');
           this.isListening = false;
           this.isRecognitionRunning = false;
           return;
         }
-        if (e.error === 'network') {
-          this.consecutiveNetworkErrors++;
-        } else {
-          this.consecutiveNetworkErrors = 0;
-        }
-        if (e.error !== 'no-speech' && e.error !== 'aborted' && e.error !== 'network') {
+        if (e.error !== 'no-speech' && e.error !== 'aborted') {
           console.warn('[MicManager] Recognition notice:', e.error);
         }
       };
@@ -136,7 +138,7 @@ export class MicrophoneManager {
       this.recognition.onend = () => {
         this.isRecognitionRunning = false;
         if (!this.isListening) return;
-        // Instant restart (150ms) to ensure continuous, non-interrupted wake word listening
+        // Instant restart (150ms) to ensure continuous listening
         setTimeout(() => this.safeStart(), 150);
       };
     }
@@ -308,23 +310,40 @@ export class MicrophoneManager {
       const volume = sum / data.length / 255;
       this.callbacks.onVolume?.(volume);
 
-      // Adaptive Real-Time Voice Activity Detection (VAD)
-      if (this.mode === 'command') {
+      // Adaptive Real-Time Voice Activity Detection (VAD) & Neural STT Fallback
+      if (this.useNeuralVadFallback || this.mode === 'command') {
         if (volume > 0.035) {
-          // Voice activity detected
           this.hasDetectedSpeech = true;
+          if (this.useNeuralVadFallback && (!this.mediaRecorder || this.mediaRecorder.state === 'inactive')) {
+            try {
+              this.recordedChunks = [];
+              const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus'
+                : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
+              this.mediaRecorder = mimeType ? new MediaRecorder(this.stream!, { mimeType }) : new MediaRecorder(this.stream!);
+              this.mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) this.recordedChunks.push(e.data);
+              };
+              this.mediaRecorder.start(100);
+            } catch {}
+          }
           if (this.autoSilenceTimer) {
             clearTimeout(this.autoSilenceTimer);
             this.autoSilenceTimer = null;
           }
         } else if (this.hasDetectedSpeech && volume < 0.02) {
-          // User was speaking, now paused — trigger automatic 750ms silence cutoff
           if (!this.autoSilenceTimer && !this.isTranscribing) {
             this.autoSilenceTimer = setTimeout(async () => {
-              if (this.mode === 'command' && this.hasDetectedSpeech) {
+              this.hasDetectedSpeech = false;
+              if (this.useNeuralVadFallback) {
+                const transcript = await this.stopMediaRecorderAndTranscribe();
+                if (transcript) {
+                  this.handleNeuralResult(transcript);
+                }
+              } else if (this.mode === 'command') {
                 await this.stop();
               }
-            }, 750);
+            }, 650);
           }
         }
       }
@@ -334,6 +353,35 @@ export class MicrophoneManager {
 
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
     this.animFrameId = requestAnimationFrame(loop);
+  }
+
+  private handleNeuralResult(transcript: string) {
+    const text = transcript.trim();
+    if (!text) return;
+
+    if (this.mode === 'wake-word') {
+      const lower = text.toLowerCase();
+      const wakeWordRegex = /\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|ari|aria|harry|airy|aerie|aury|eric|ah\s*ree|friday|jarvis)\b/i;
+
+      if (!this.wakeWordDetected && (wakeWordRegex.test(lower) || lower.includes('ahri') || lower.includes('ari'))) {
+        this.wakeWordDetected = true;
+        this.callbacks.onWakeWord?.();
+        this.resetSilenceTimer();
+
+        const clean = lower.replace(/\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|ari|aria|harry|airy|aerie|aury|eric|ah\s*ree|friday|jarvis)\b[,\s]*/gi, '').trim();
+        if (clean) {
+          this.callbacks.onTranscript?.(clean, true);
+        }
+      } else if (this.wakeWordDetected) {
+        const clean = lower.replace(/\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|ari|aria|harry|airy|aerie|aury|eric|ah\s*ree|friday|jarvis)\b[,\s]*/gi, '').trim();
+        if (clean) {
+          this.callbacks.onTranscript?.(clean, true);
+          this.resetSilenceTimer();
+        }
+      }
+    } else if (this.mode === 'command' || this.mode === 'meeting') {
+      this.callbacks.onTranscript?.(text, true);
+    }
   }
 
   private clearAllTimers() {
