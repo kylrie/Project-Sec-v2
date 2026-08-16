@@ -125,9 +125,6 @@ export class MicrophoneManager {
         }
         if (e.error === 'network') {
           this.consecutiveNetworkErrors++;
-          if (this.consecutiveNetworkErrors === 1) {
-            console.info('[MicManager] Native Web Speech API offline. Ultra-low latency neural STT active.');
-          }
         } else {
           this.consecutiveNetworkErrors = 0;
         }
@@ -139,10 +136,8 @@ export class MicrophoneManager {
       this.recognition.onend = () => {
         this.isRecognitionRunning = false;
         if (!this.isListening) return;
-        const retryDelay = this.consecutiveNetworkErrors > 0
-          ? Math.min(6000, 1500 + this.consecutiveNetworkErrors * 500)
-          : 300;
-        setTimeout(() => this.safeStart(), retryDelay);
+        // Instant restart (150ms) to ensure continuous, non-interrupted wake word listening
+        setTimeout(() => this.safeStart(), 150);
       };
     }
 

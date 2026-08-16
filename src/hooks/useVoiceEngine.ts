@@ -62,10 +62,37 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       const u = new SpeechSynthesisUtterance(cleanText);
       const voices = window.speechSynthesis.getVoices();
       const s = settingsRef.current;
-      const v = voices.find(x => x.name === s.voiceName) ||
-        voices.find(x => /Google|Natural|Jenny|Aria|Samantha|Zira|Microsoft/i.test(x.name) && x.lang.startsWith('en')) ||
-        voices.find(x => x.lang.startsWith('en')) || voices[0];
 
+      const selectBestVoice = () => {
+        if (!voices || voices.length === 0) return null;
+        if (s.voiceName) {
+          const selected = voices.find(x => x.name === s.voiceName);
+          if (selected) return selected;
+        }
+        // 1. Google Voices (Google US English, Google UK English, etc.)
+        const google = voices.find(x => /Google (US|UK|AU|IN) English|Google/i.test(x.name) && x.lang.startsWith('en'));
+        if (google) return google;
+
+        // 2. Natural / Neural Voices
+        const natural = voices.find(x => /Natural|Neural|Online/i.test(x.name) && x.lang.startsWith('en') && !/Desktop/i.test(x.name));
+        if (natural) return natural;
+
+        // 3. Apple High Quality Voices
+        const apple = voices.find(x => /Samantha|Karen|Victoria|Serena|Siri/i.test(x.name) && x.lang.startsWith('en'));
+        if (apple) return apple;
+
+        // 4. Non-robotic English fallback
+        const nonRobotic = voices.find(x => x.lang.startsWith('en') && !/Zira|David|Mark|Desktop/i.test(x.name));
+        if (nonRobotic) return nonRobotic;
+
+        // 5. Any English voice
+        const english = voices.find(x => x.lang.startsWith('en'));
+        if (english) return english;
+
+        return voices[0];
+      };
+
+      const v = selectBestVoice();
       if (v) u.voice = v;
       u.rate = s.rate || 1.05;
       u.pitch = s.pitch || 1.0;
