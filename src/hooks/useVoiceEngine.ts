@@ -45,6 +45,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
   const interimTranscriptRef = useRef<string>('');
   const processCommandRef = useRef<(spokenText: string) => Promise<void>>(() => Promise.resolve());
   const settingsRef = useRef<VoiceSettings>(settings);
+  const isRecognitionRunningRef = useRef<boolean>(false);
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -517,10 +518,12 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     };
 
     recognition.onstart = () => {
+      isRecognitionRunningRef.current = true;
       setIsMicAvailable(true);
     };
 
     recognition.onerror = (event: any) => {
+      isRecognitionRunningRef.current = false;
       // BUG FIX 4: Explicitly handle permission errors
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed' || event.error === 'audio-capture') {
         console.error('[VoiceEngine] Mic permission or audio capture failed:', event.error);
@@ -534,9 +537,11 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     };
 
     recognition.onend = () => {
+      isRecognitionRunningRef.current = false;
       if (settingsRef.current.continuousListening) {
         try {
           recognition.start();
+          isRecognitionRunningRef.current = true;
         } catch {
           // ignore
         }
@@ -551,6 +556,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       } catch {
         // ignore
       }
+      isRecognitionRunningRef.current = false;
       if (vadServiceRef.current) {
         vadServiceRef.current.stop();
       }
@@ -578,13 +584,21 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     if (!rec) return;
     if (settings.continuousListening) {
       try {
-        rec.start();
-      } catch (e) {
-        console.warn('Continuous recognition waiting for user gesture', e);
+        if (!isRecognitionRunningRef.current) {
+          rec.start();
+          isRecognitionRunningRef.current = true;
+        }
+      } catch (e: any) {
+        if (e?.name === 'InvalidStateError') {
+          isRecognitionRunningRef.current = true;
+        } else {
+          console.warn('Continuous recognition waiting for user gesture', e);
+        }
       }
     } else {
       try {
         rec.stop();
+        isRecognitionRunningRef.current = false;
       } catch {}
     }
   }, [settings.continuousListening]);
@@ -636,12 +650,16 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     if (recognitionRef.current) {
       try {
         const rec = recognitionRef.current;
-        // CRITICAL FIX: Only start if not already active (readyState !== 1)
-        if (!('readyState' in rec) || rec.readyState !== 1) {
+        if (!isRecognitionRunningRef.current) {
           rec.start();
+          isRecognitionRunningRef.current = true;
         }
-      } catch (e) {
-        console.warn('[VoiceEngine] Manual start error:', e);
+      } catch (e: any) {
+        if (e?.name === 'InvalidStateError') {
+          isRecognitionRunningRef.current = true;
+        } else {
+          console.warn('[VoiceEngine] Manual start error:', e);
+        }
       }
     }
   }, [interrupt, setupAudioAnalyser]);

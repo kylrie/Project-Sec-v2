@@ -16,6 +16,7 @@ export function useVoice(onTextComplete: (text: string) => void) {
   const recognitionRef = useRef<any>(null);
   const synthesisRef = useRef<SpeechSynthesis | null>(null);
   const statusRef = useRef<VoiceStatus>('idle');
+  const isRecognitionRunningRef = useRef<boolean>(false);
 
   // Sync status to ref so callbacks always see latest value without re-creating recognition
   useEffect(() => {
@@ -47,11 +48,13 @@ export function useVoice(onTextComplete: (text: string) => void) {
     };
 
     rec.onstart = () => {
+      isRecognitionRunningRef.current = true;
       setStatus('listening');
       setTranscript('');
     };
 
     rec.onend = () => {
+      isRecognitionRunningRef.current = false;
       // Use ref to check latest status, avoiding stale closure
       if (statusRef.current === 'listening') {
         setStatus('idle');
@@ -59,6 +62,7 @@ export function useVoice(onTextComplete: (text: string) => void) {
     };
 
     rec.onerror = (event: any) => {
+      isRecognitionRunningRef.current = false;
       console.error('Speech recognition error', event.error);
       setStatus('idle');
     };
@@ -67,6 +71,7 @@ export function useVoice(onTextComplete: (text: string) => void) {
 
     return () => {
       try { rec.stop(); } catch {}
+      isRecognitionRunningRef.current = false;
     };
   }, [onTextComplete]); // ← status INTENTIONALLY REMOVED from dependencies
 
@@ -89,13 +94,16 @@ export function useVoice(onTextComplete: (text: string) => void) {
     }
     if (recognitionRef.current) {
       try {
-        // Guard: only start if not already active
-        const rec = recognitionRef.current;
-        if (!('readyState' in rec) || rec.readyState !== 1) {
-          rec.start();
+        if (!isRecognitionRunningRef.current) {
+          recognitionRef.current.start();
+          isRecognitionRunningRef.current = true;
         }
-      } catch (e) {
-        console.error("Recognition start error:", e);
+      } catch (e: any) {
+        if (e?.name === 'InvalidStateError') {
+          isRecognitionRunningRef.current = true;
+        } else {
+          console.error("Recognition start error:", e);
+        }
       }
     }
   }, [status]);
@@ -104,6 +112,7 @@ export function useVoice(onTextComplete: (text: string) => void) {
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
+        isRecognitionRunningRef.current = false;
       } catch {}
     }
   }, []);
