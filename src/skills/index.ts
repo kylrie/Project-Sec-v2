@@ -85,7 +85,7 @@ export async function executeSkillStep(step: SkillStep, userInput: string, sessi
         return { success: true, result: events, summary: `Checked calendar (${events.length} events)` };
       }
       case 'gmail': {
-        const emails = googleWorkspaceService.getCachedGmailMessages();
+        const emails = googleWorkspaceService.getCachedEmails();
         return { success: true, result: emails, summary: `Loaded emails (${emails.length} items)` };
       }
       case 'tasks': {
