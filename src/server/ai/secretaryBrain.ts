@@ -357,15 +357,55 @@ Guidelines:
       }
     }
 
-    // 4. Intelligent Local Executive Brain with SQLite Tool Execution
-    const lower = params.message.toLowerCase();
+    // 4. Intelligent Local Executive Brain with Rich Offline Routing & SQLite Tool Execution
+    const lower = params.message.toLowerCase().trim();
     let localIntent = 'general_chat';
     let localReply = "Understood, sir. All core executive systems remain operational.";
     let localActionData: any = {};
     const localToolsUsed: string[] = [];
 
+    // Identity / Greetings / Specialists
+    if (/^(hi|hello|hey|good morning|good afternoon|good evening)\b/i.test(lower)) {
+      const isMorning = new Date().getHours() < 12;
+      const greeting = isMorning ? 'Good morning' : 'Good day';
+      localIntent = 'greeting';
+      localReply = `${greeting}, sir. Ahri online and standing by. Chrono, Cipher, and Echo are ready across all channels.`;
+    }
+    else if (lower.includes('who are you') || lower.includes('what are you') || lower.includes('what is your name')) {
+      localIntent = 'identity_inquiry';
+      localReply = "I am Ahri, your executive AI coordinator. I lead our specialist network—with Chrono on schedules, Cipher on research, and Echo on communications.";
+    }
+    else if (lower.includes('chrono') || lower.includes('who is chrono')) {
+      localIntent = 'specialist_info';
+      localReply = "Chrono is your scheduling and time-blocking specialist, managing your Google Calendar, focus sprints, and meeting buffers.";
+      localToolsUsed.push('calendar_list_events');
+    }
+    else if (lower.includes('cipher') || lower.includes('who is cipher')) {
+      localIntent = 'specialist_info';
+      localReply = "Cipher is your deep analytical specialist, tracking action items, task priorities, and strategic knowledge synthesis.";
+      localToolsUsed.push('tasks_list_tasks');
+    }
+    else if (lower.includes('echo') || lower.includes('who is echo')) {
+      localIntent = 'specialist_info';
+      localReply = "Echo is your communications liaison, drafting executive emails, screening inbound messages, and managing VIP contacts.";
+      localToolsUsed.push('gmail_list_emails');
+    }
+    else if (lower.includes('what can you do') || lower.includes('help') || lower.includes('capabilities')) {
+      localIntent = 'help';
+      localReply = "I can manage your calendar, draft and screen emails, run focus sprints, orchestrate multi-device workflows, and brief you on your daily priorities.";
+    }
+    else if (lower.includes('what time') || lower.includes('current time')) {
+      const timeStr = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      localIntent = 'get_time';
+      localReply = `It is currently ${timeStr}, sir.`;
+    }
+    else if (lower.includes('what day') || lower.includes("today's date") || lower.includes('what date')) {
+      const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      localIntent = 'get_date';
+      localReply = `Today is ${dateStr}, sir.`;
+    }
     // Schedule Event
-    if (lower.includes('schedule') || lower.includes('calendar') || lower.includes('meeting') || lower.includes('book')) {
+    else if (lower.includes('schedule') || lower.includes('calendar') || lower.includes('meeting') || lower.includes('book')) {
       let title = 'Executive Sync';
       let time = '02:00 PM';
       let date = 'Today';
@@ -376,7 +416,7 @@ Guidelines:
       if (lower.includes('tomorrow')) date = 'Tomorrow';
 
       const cleaned = params.message
-        .replace(/^(?:hey\s+)?(?:friday\s+)?(?:please\s+)?(?:schedule|set up|book|create)\s+(?:an?\s+)?/i, '')
+        .replace(/^(?:hey\s+)?(?:ahri\s+|friday\s+)?(?:please\s+)?(?:schedule|set up|book|create)\s+(?:an?\s+)?/i, '')
         .replace(/\s+(?:at|for)\s+\d{1,2}(?::\d{2})?\s*(?:am|pm|AM|PM)?/i, '')
         .replace(/\s+(?:today|tomorrow)/i, '')
         .trim();
@@ -389,7 +429,7 @@ Guidelines:
         date
       });
       localIntent = 'schedule_event';
-      localReply = `I have scheduled ${title} for ${time} ${date}, sir.`;
+      localReply = `I have scheduled ${title} for ${time} ${date}, sir. Chrono has updated your calendar.`;
       localActionData = event;
       localToolsUsed.push('calendar_schedule_event');
     }
@@ -398,8 +438,8 @@ Guidelines:
       const unread = dbRepository.listEmails(true);
       localIntent = 'summarize_emails';
       localReply = unread.length > 0
-        ? `You have ${unread.length} unread executive message${unread.length > 1 ? 's' : ''}, sir. The most urgent is from ${(unread[0] as any).from_name} regarding ${(unread[0] as any).subject}.`
-        : `Your inbox is currently clear of urgent items, sir.`;
+        ? `You have ${unread.length} unread executive message${unread.length > 1 ? 's' : ''}, sir. Echo reports the most urgent is from ${(unread[0] as any).from_name} regarding ${(unread[0] as any).subject}.`
+        : `Your inbox is currently clear of urgent items, sir. Echo will alert you if critical communications arrive.`;
       localActionData = { emails: unread };
       localToolsUsed.push('gmail_list_emails');
     }
@@ -408,23 +448,23 @@ Guidelines:
       const tasks = dbRepository.listTasks('pending');
       localIntent = 'list_tasks';
       localReply = tasks.length > 0
-        ? `You have ${tasks.length} pending priority task${tasks.length > 1 ? 's' : ''}, sir. Next item: ${(tasks[0] as any).title}.`
-        : `No pending tasks on your executive queue, sir.`;
+        ? `Cipher reports ${tasks.length} pending priority task${tasks.length > 1 ? 's' : ''}, sir. Next item: ${(tasks[0] as any).title}.`
+        : `No pending tasks on your executive queue, sir. Cipher has verified all items completed.`;
       localActionData = { tasks };
       localToolsUsed.push('tasks_list_tasks');
     }
-    // Timers
-    else if (lower.includes('timer') || lower.includes('countdown')) {
+    // Timers & Sprints
+    else if (lower.includes('timer') || lower.includes('countdown') || lower.includes('focus') || lower.includes('pomodoro')) {
       const timer = dbRepository.setTimer('Focus Timer', 300);
       localIntent = 'set_timer';
-      localReply = `Five minute timer initiated, sir.`;
+      localReply = `Focus timer initiated, sir. Chrono will alert you upon completion.`;
       localActionData = timer;
       localToolsUsed.push('timers_set_timer');
     }
 
     const latencyMs = Date.now() - startTime;
 
-    // BUG 5 FIX: Fire-and-forget async SQLite writes
+    // Async SQLite write
     Promise.resolve().then(() => {
       try {
         dbRepository.saveConversation({
