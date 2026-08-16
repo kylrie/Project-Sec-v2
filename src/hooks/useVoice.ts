@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { microphoneManager } from '../services/microphoneManager';
 
 export type VoiceStatus = 'idle' | 'listening' | 'processing' | 'speaking';
@@ -6,28 +6,16 @@ export type VoiceStatus = 'idle' | 'listening' | 'processing' | 'speaking';
 export function useVoice(onTextComplete: (text: string) => void) {
   const [status, setStatus] = useState<VoiceStatus>('idle');
   const [transcript, setTranscript] = useState('');
-  const synthesisRef = useRef<SpeechSynthesis | null>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      synthesisRef.current = window.speechSynthesis;
-      if (synthesisRef.current?.getVoices) {
-        synthesisRef.current.getVoices();
-        synthesisRef.current.onvoiceschanged = () => {
-          synthesisRef.current?.getVoices();
-        };
-      }
+    if (typeof window !== 'undefined' && window.speechSynthesis?.getVoices) {
+      window.speechSynthesis.getVoices();
     }
   }, []);
 
   const startListening = useCallback(() => {
-    if (status === 'speaking' && synthesisRef.current) {
-      synthesisRef.current.cancel();
-    }
-    
     setStatus('listening');
     setTranscript('');
-    
     microphoneManager.start('command', {
       onTranscript: (text: string, isFinal: boolean) => {
         setTranscript(text);
@@ -37,12 +25,9 @@ export function useVoice(onTextComplete: (text: string) => void) {
           microphoneManager.stop();
         }
       },
-      onError: (err: string) => {
-        console.error('Speech recognition error:', err);
-        setStatus('idle');
-      }
+      onError: (err: string) => { console.error(err); setStatus('idle'); }
     });
-  }, [onTextComplete, status]);
+  }, [onTextComplete]);
 
   const stopListening = useCallback(() => {
     microphoneManager.stop();
@@ -50,34 +35,18 @@ export function useVoice(onTextComplete: (text: string) => void) {
   }, []);
 
   const speak = useCallback((text: string) => {
-    if (!synthesisRef.current) return;
+    if (!window.speechSynthesis) return;
     setStatus('speaking');
-    synthesisRef.current.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    const voices = synthesisRef.current.getVoices();
-    const preferredVoice = voices.find(v => 
-      v.name.includes('Google US English') || 
-      v.name.includes('Samantha') || 
-      v.name.includes('Female')
-    ) || voices[0];
-    
-    if (preferredVoice) utterance.voice = preferredVoice;
-    utterance.rate = 1.05;
-    utterance.pitch = 1.0;
-
-    utterance.onend = () => setStatus('idle');
-    utterance.onerror = () => setStatus('idle');
-
-    synthesisRef.current.speak(utterance);
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    const voices = window.speechSynthesis.getVoices();
+    const v = voices.find(x => /Google US English|Samantha|Female/.test(x.name)) || voices[0];
+    if (v) u.voice = v;
+    u.rate = 1.05; u.pitch = 1.0;
+    u.onend = () => setStatus('idle');
+    u.onerror = () => setStatus('idle');
+    window.speechSynthesis.speak(u);
   }, []);
 
-  return {
-    status,
-    transcript,
-    startListening,
-    stopListening,
-    speak,
-    setStatus
-  };
+  return { status, transcript, startListening, stopListening, speak, setStatus };
 }
