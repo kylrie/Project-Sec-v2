@@ -2,6 +2,30 @@ export type VoiceState = 'standby' | 'listening' | 'processing' | 'speaking' | '
 
 export type FridayPersonality = 'professional' | 'concise' | 'warm' | 'executive';
 
+export interface CompanionPersona {
+  id: string;
+  name: string;
+  role: string;
+  color: string;
+  icon: string;
+  systemPrompt: string;
+}
+
+export interface PersonaRoutingItem {
+  persona: string;
+  action: string;
+  status: 'running' | 'done' | 'error';
+}
+
+export interface AhriResponse {
+  spokenReply: string;
+  routing?: PersonaRoutingItem[];
+  actionData?: any;
+  intent?: string;
+  toolsUsed?: string[];
+  latencyMs?: number;
+}
+
 export interface VoiceSettings {
   wakeWord: string;
   isWakeWordEnabled: boolean;

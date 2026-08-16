@@ -167,7 +167,7 @@ async function startServer() {
   // Intent parsing and conversational AI powered by Gemini 3.7 Pro & Supabase/SQLite Memory
   app.post("/api/command", async (req, res) => {
     try {
-      const { message, sessionId = "default", personality = "professional", userTimezone = "UTC", userContext } = req.body;
+      const { message, sessionId = "default", personality = "professional", userTimezone = "UTC", userContext, personas } = req.body;
       const userId = req.body.userId || (req as any).user?.uid || "anonymous";
       
       // Process with Gemini 3.7 Pro AI Brain
@@ -176,7 +176,8 @@ async function startServer() {
         sessionId,
         personality,
         userTimezone,
-        userContext
+        userContext,
+        personas
       });
 
       // Save to Supabase Conversations

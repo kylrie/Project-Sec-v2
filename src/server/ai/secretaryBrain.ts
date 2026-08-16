@@ -10,6 +10,46 @@ export interface BrainProcessResult {
   toolsUsed: string[];
   latencyMs: number;
   provider: 'gemini-3.7-pro' | 'gemini-flash' | 'openai-gpt4o' | 'local-brain';
+  routing?: Array<{ persona: string; action: string; status: 'running' | 'done' | 'error' }>;
+}
+
+function buildPersonaRouting(toolsUsed: string[], detectedPersonas?: string[]): Array<{ persona: string; action: string; status: 'running' | 'done' | 'error' }> {
+  const routing: Array<{ persona: string; action: string; status: 'running' | 'done' | 'error' }> = [];
+
+  const hasChrono = toolsUsed.some(t => t.startsWith('calendar_') || t.startsWith('timers_') || t.startsWith('reminders_')) || detectedPersonas?.includes('chrono');
+  if (hasChrono) {
+    routing.push({
+      persona: 'chrono',
+      action: toolsUsed.some(t => t.includes('schedule')) ? 'Scheduling event in calendar' : 'Managing agenda & timelines',
+      status: 'done'
+    });
+  }
+
+  const hasEcho = toolsUsed.some(t => t.startsWith('gmail_') || t.startsWith('contacts_') || t.startsWith('mesh_')) || detectedPersonas?.includes('echo');
+  if (hasEcho) {
+    routing.push({
+      persona: 'echo',
+      action: toolsUsed.some(t => t.includes('draft')) ? 'Drafting communication' : 'Reviewing messages and contacts',
+      status: 'done'
+    });
+  }
+
+  const hasCipher = toolsUsed.some(t => t.startsWith('tasks_') || t.startsWith('memory_')) || detectedPersonas?.includes('cipher');
+  if (hasCipher) {
+    routing.push({
+      persona: 'cipher',
+      action: 'Synthesizing knowledge & facts',
+      status: 'done'
+    });
+  }
+
+  routing.push({
+    persona: 'ahri',
+    action: 'Executive synthesis & spoken briefing',
+    status: 'done'
+  });
+
+  return routing;
 }
 
 export class SecretaryBrain {
@@ -30,7 +70,7 @@ export class SecretaryBrain {
   }
 
   /**
-   * Main Agentic Processing Loop with Gemini 3.7 Pro, Multi-turn Context & Tool Calling
+   * Main Agentic Processing Loop with Gemini 3.7 Pro, Multi-turn Context, Persona Routing & Tool Calling
    */
   public async processCommand(params: {
     message: string;
@@ -38,6 +78,7 @@ export class SecretaryBrain {
     personality?: 'professional' | 'concise' | 'warm' | 'executive';
     userTimezone?: string;
     userContext?: string;
+    personas?: string[];
   }): Promise<BrainProcessResult> {
     const startTime = Date.now();
     const sessionId = params.sessionId || 'default';
@@ -54,6 +95,14 @@ export class SecretaryBrain {
 
     const userProfileContext = params.userContext ? `\n${params.userContext}` : '';
 
+    const personasContext = params.personas && params.personas.length > 0
+      ? `\nACTIVE SPECIALIST ROLES:
+- Ahri (Executive Coordinator): Oversees and synthesizes
+- Chrono (Scheduling Specialist): Handles calendar, events, reminders
+- Cipher (Research Analyst): Gathers info and analyzes data
+- Echo (Communications Specialist): Drafts emails, messages, correspondence`
+      : '';
+
     const personalityPrompts: Record<string, string> = {
       professional: "You are AHRI (Project Ahri), an advanced executive AI secretary and right-hand intelligence. Be impeccably professional, highly competent, calm, and proactive.",
       concise: "You are AHRI. Be ultra-compact, telegraphic, and direct. Answer in 1-2 sharp, decisive sentences. No filler words.",
@@ -65,6 +114,7 @@ export class SecretaryBrain {
 Current Server Time: ${new Date().toLocaleString('en-US', { timeZone: timezone })} (${timezone}).
 ${memoryContext}
 ${userProfileContext}
+${personasContext}
 
 Guidelines:
 1. Always reason about the user's intent. If an action is required (scheduling events, checking emails, creating tasks, setting timers, searching contacts, saving facts), CALL THE APPROPRIATE TOOL(S).
@@ -197,7 +247,8 @@ Guidelines:
           actionData: mergedActionData,
           toolsUsed,
           latencyMs,
-          provider: activeModel.includes('pro') ? 'gemini-3.7-pro' : 'gemini-flash'
+          provider: activeModel.includes('pro') ? 'gemini-3.7-pro' : 'gemini-flash',
+          routing: buildPersonaRouting(toolsUsed, params.personas)
         };
 
       } catch (err: any) {
@@ -297,7 +348,8 @@ Guidelines:
           actionData: mergedActionData,
           toolsUsed,
           latencyMs,
-          provider: 'openai-gpt4o'
+          provider: 'openai-gpt4o',
+          routing: buildPersonaRouting(toolsUsed, params.personas)
         };
 
       } catch (err: any) {
@@ -401,7 +453,8 @@ Guidelines:
       actionData: localActionData,
       toolsUsed: localToolsUsed,
       latencyMs,
-      provider: 'local-brain'
+      provider: 'local-brain',
+      routing: buildPersonaRouting(localToolsUsed, params.personas)
     };
   }
 }

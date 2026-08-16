@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { VoiceState, VoiceSettings, ConversationTurn } from '../types/friday';
+import { VoiceState, VoiceSettings, ConversationTurn, AhriResponse } from '../types/friday';
 import { soundEffects } from '../services/audioEffects';
 import { storageService } from '../services/storage';
 import { tryParseLocalIntent } from '../services/localIntentParser';
 import { microphoneManager } from '../services/microphoneManager';
 import { userMemory } from '../services/userMemory';
+import { detectPersonas } from '../services/companionRegistry';
 
 interface UseVoiceEngineProps {
   settings: VoiceSettings;
@@ -82,11 +83,13 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     const t = setTimeout(() => ctrl.abort(), 12000);
     try {
       const hist = storageService.getConversations();
+      const detectedSpecialists = detectPersonas(clean);
       const res = await fetch('/api/command', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
         body: JSON.stringify({
           message: clean,
           userContext: userMemory.buildContextPrompt(),
+          personas: detectedSpecialists,
           context: hist.slice(-4).map(h => ({ role: h.role, text: h.text })),
           personality: settings.personality,
           userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -96,8 +99,16 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       const lat = Date.now() - commandStartTimeRef.current;
       setLastLatencyMs(lat);
       if (!res.ok) throw new Error(`Server ${res.status}`);
-      const data = await res.json();
-      const reply = data.spokenReply || data.reply || "Understood, sir. Systems updated.";
+      const data: AhriResponse = await res.json();
+      const reply = data.spokenReply || (data as any).reply || "Understood, sir. Systems updated.";
+
+      // Log & track specialist routing for UI activity HUD
+      if (data.routing) {
+        data.routing.forEach(r => {
+          console.log(`[Specialist:${r.persona}] ${r.action} (${r.status})`);
+        });
+      }
+
       const userTurn: ConversationTurn = { id: 'turn-' + Math.random().toString(36).slice(2,9), role: 'user', text: clean, timestamp: Date.now(), latencyMs: lat, intent: data.intent, actionData: data.actionData };
       const fridayTurn: ConversationTurn = { id: 'turn-' + Math.random().toString(36).slice(2,9), role: 'friday', text: reply, timestamp: Date.now(), latencyMs: lat, intent: data.intent, actionData: data.actionData };
       onTurnComplete(userTurn);
