@@ -430,19 +430,19 @@ export class MicrophoneManager {
 
     if (this.mode === 'wake-word') {
       const lower = text.toLowerCase();
-      const wakeWordRegex = /\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|ari|aria|harry|airy|aerie|aury|eric|ah\s*ree|friday|jarvis)\b/i;
+      const wakeWordRegex = /\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|ari|aria|harry|airy|aerie|aury|eric|allie|audi|annie|ah\s*ree|friday|jarvis)\b/i;
 
       if (!this.wakeWordDetected && (wakeWordRegex.test(lower) || lower.includes('ahri') || lower.includes('ari') || lower.includes('hey ari') || lower.includes('hey ahri'))) {
         this.wakeWordDetected = true;
         this.callbacks.onWakeWord?.();
         this.resetSilenceTimer();
 
-        const clean = lower.replace(/\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|ari|aria|harry|airy|aerie|aury|eric|ah\s*ree|friday|jarvis)\b[,\s]*/gi, '').trim();
+        const clean = text.replace(/\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|ari|aria|harry|airy|aerie|aury|eric|allie|audi|annie|ah\s*ree|friday|jarvis)\b[,\s]*/gi, '').trim();
         if (clean) {
           this.callbacks.onTranscript?.(clean, true);
         }
       } else if (this.wakeWordDetected) {
-        const clean = lower.replace(/\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|ari|aria|harry|airy|aerie|aury|eric|ah\s*ree|friday|jarvis)\b[,\s]*/gi, '').trim();
+        const clean = text.replace(/\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|ari|aria|harry|airy|aerie|aury|eric|allie|audi|annie|ah\s*ree|friday|jarvis)\b[,\s]*/gi, '').trim();
         if (clean) {
           this.callbacks.onTranscript?.(clean, true);
           this.resetSilenceTimer();
