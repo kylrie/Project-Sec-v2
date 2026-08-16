@@ -28,13 +28,29 @@ function startBackend() {
     return Promise.resolve(true);
   }
 
-  // Production: start the compiled server
-  const serverPath = path.join(process.cwd(), 'dist', 'server.cjs');
-  serverProcess = spawn('node', [serverPath], {
-    env: { ...process.env, NODE_ENV: 'production', PORT: '3000' },
-    stdio: 'inherit',
-    detached: false
-  });
+  // Production: start the compiled server using Electron's embedded Node runtime
+  const appPath = app.getAppPath();
+  const serverPath = path.join(appPath, 'dist', 'server.cjs');
+
+  try {
+    serverProcess = spawn(process.execPath, [serverPath], {
+      env: { 
+        ...process.env, 
+        ELECTRON_RUN_AS_NODE: '1',
+        NODE_ENV: 'production', 
+        PORT: '3000' 
+      },
+      stdio: 'inherit',
+      detached: false
+    });
+  } catch (spawnErr) {
+    console.warn('[Electron] process.execPath spawn failed, attempting node fallback:', spawnErr);
+    serverProcess = spawn('node', [serverPath], {
+      env: { ...process.env, NODE_ENV: 'production', PORT: '3000' },
+      stdio: 'inherit',
+      detached: false
+    });
+  }
 
   serverProcess.on('error', (err) => {
     console.error('[Electron] Failed to start backend server:', err);
