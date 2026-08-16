@@ -25,6 +25,16 @@ export function getSupabaseAdmin(): SupabaseClient {
 export const isSupabaseConfigured = () =>
   !!process.env.SUPABASE_URL && !!process.env.SUPABASE_SERVICE_KEY;
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DEFAULT_UUID = '00000000-0000-0000-0000-000000000000';
+
+export function normalizeUserId(userId?: string): string {
+  if (!userId || !UUID_REGEX.test(userId)) {
+    return DEFAULT_UUID;
+  }
+  return userId;
+}
+
 export const dbRepository = {
   // 1. Calendar Events
   listCalendarEvents: async (userId: string, dateRange?: { start?: string; end?: string; date?: string }) => {
@@ -199,7 +209,7 @@ export const dbRepository = {
 
   // 3. Conversations & AI Neural Memory
   saveConversation: async (params: {
-    userId: string;
+    userId?: string;
     sessionId?: string;
     role: string;
     content: string;
@@ -211,7 +221,7 @@ export const dbRepository = {
     const { data, error } = await getSupabaseAdmin()
       .from('conversations')
       .insert({
-        user_id: params.userId,
+        user_id: normalizeUserId(params.userId),
         session_id: params.sessionId || 'default',
         role: params.role,
         content: params.content,
@@ -234,7 +244,7 @@ export const dbRepository = {
     const { data, error } = await getSupabaseAdmin()
       .from('conversations')
       .select('role, content, intent, created_at')
-      .eq('user_id', userId)
+      .eq('user_id', normalizeUserId(userId))
       .eq('session_id', sessionId)
       .order('created_at', { ascending: false })
       .limit(limit);
