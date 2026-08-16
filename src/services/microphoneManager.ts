@@ -4,6 +4,7 @@
  * Architecture:
  * - ONE getUserMedia stream (shared across VAD, visualizer, and speech)
  * - ONE SpeechRecognition instance (shared across wake-word, commands, and meeting)
+ * - Parallel MediaRecorder audio buffer with AI STT fallback (for Electron/offline)
  * - Mode-based routing: 'idle' | 'wake-word' | 'command' | 'meeting'
  * 
  * The browser only allows ONE active SpeechRecognition at a time.
@@ -25,6 +26,8 @@ export class MicrophoneManager {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private recognition: any = null;
+  private mediaRecorder: MediaRecorder | null = null;
+  private recordedChunks: Blob[] = [];
   private mode: MicMode = 'idle';
   private isListening = false;
   private isRecognitionRunning = false;
@@ -80,7 +83,7 @@ export class MicrophoneManager {
 
     // If already running in a different mode, stop first
     if (this.isListening && this.mode !== mode) {
-      this.stop();
+      await this.stop();
     }
 
     if (this.silenceTimer) clearTimeout(this.silenceTimer);
@@ -90,13 +93,11 @@ export class MicrophoneManager {
     this.finalTranscript = '';
     this.interimTranscript = '';
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      callbacks.onError?.('Speech recognition not supported');
-      return false;
-    }
+    // Start parallel audio recording buffer for high-accuracy fallback
+    this.startMediaRecorder();
 
-    if (!this.recognition) {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition && !this.recognition) {
       this.recognition = new SpeechRecognition();
       this.recognition.continuous = true;
       this.recognition.interimResults = true;
@@ -121,8 +122,8 @@ export class MicrophoneManager {
         }
         if (e.error === 'network') {
           this.consecutiveNetworkErrors++;
-          if (this.consecutiveNetworkErrors === 1 || this.consecutiveNetworkErrors % 10 === 0) {
-            console.warn('[MicManager] Web Speech API network reconnecting (attempt ' + this.consecutiveNetworkErrors + ')...');
+          if (this.consecutiveNetworkErrors === 1) {
+            console.info('[MicManager] Web Speech API network offline in this environment. Parallel AI audio buffer active.');
           }
         } else {
           this.consecutiveNetworkErrors = 0;
@@ -136,7 +137,7 @@ export class MicrophoneManager {
         this.isRecognitionRunning = false;
         if (!this.isListening) return;
         const retryDelay = this.consecutiveNetworkErrors > 0
-          ? Math.min(4000, 1000 + this.consecutiveNetworkErrors * 500)
+          ? Math.min(8000, 2000 + this.consecutiveNetworkErrors * 1000)
           : 300;
         setTimeout(() => this.safeStart(), retryDelay);
       };
@@ -146,6 +147,77 @@ export class MicrophoneManager {
     this.safeStart();
     this.startVolumeLoop();
     return true;
+  }
+
+  private startMediaRecorder() {
+    if (!this.stream || typeof MediaRecorder === 'undefined') return;
+    try {
+      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+        try { this.mediaRecorder.stop(); } catch {}
+      }
+      this.recordedChunks = [];
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
+
+      this.mediaRecorder = mimeType ? new MediaRecorder(this.stream, { mimeType }) : new MediaRecorder(this.stream);
+      this.mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          this.recordedChunks.push(e.data);
+        }
+      };
+      this.mediaRecorder.start(250);
+    } catch (e) {
+      console.warn('[MicManager] MediaRecorder notice:', e);
+    }
+  }
+
+  private async stopMediaRecorderAndTranscribe(): Promise<string | null> {
+    if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') return null;
+    return new Promise((resolve) => {
+      this.mediaRecorder!.onstop = async () => {
+        if (this.recordedChunks.length === 0) {
+          resolve(null);
+          return;
+        }
+        try {
+          const mime = this.mediaRecorder?.mimeType || 'audio/webm';
+          const blob = new Blob(this.recordedChunks, { type: mime });
+          this.recordedChunks = [];
+          if (blob.size < 500) {
+            resolve(null);
+            return;
+          }
+          const reader = new FileReader();
+          reader.onloadend = async () => {
+            try {
+              const base64Audio = (reader.result as string).split(',')[1];
+              const res = await fetch('/api/transcribe-audio', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ audioBase64: base64Audio, mimeType: mime })
+              });
+              if (res.ok) {
+                const data = await res.json();
+                resolve(data.transcript || null);
+              } else {
+                resolve(null);
+              }
+            } catch {
+              resolve(null);
+            }
+          };
+          reader.readAsDataURL(blob);
+        } catch {
+          resolve(null);
+        }
+      };
+      try {
+        this.mediaRecorder!.stop();
+      } catch {
+        resolve(null);
+      }
+    });
   }
 
   private safeStart() {
@@ -219,15 +291,26 @@ export class MicrophoneManager {
     this.animFrameId = requestAnimationFrame(loop);
   }
 
-  stop() {
+  async stop() {
     this.isListening = false;
     this.isRecognitionRunning = false;
+    const previousMode = this.mode;
     this.mode = 'idle';
     this.wakeWordDetected = false;
     if (this.silenceTimer) clearTimeout(this.silenceTimer);
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
     if (this.recognition) {
       try { this.recognition.stop(); } catch {}
+    }
+
+    // If manual command mode ended and Web Speech API had network error (no transcript generated), transcribe audio buffer
+    if ((previousMode === 'command' || previousMode === 'meeting') && !this.finalTranscript && this.mediaRecorder) {
+      const fallbackText = await this.stopMediaRecorderAndTranscribe();
+      if (fallbackText && fallbackText.trim()) {
+        this.callbacks.onTranscript?.(fallbackText.trim(), true);
+      }
+    } else if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      try { this.mediaRecorder.stop(); } catch {}
     }
   }
 
@@ -240,6 +323,8 @@ export class MicrophoneManager {
     }
     this.audioContext = null;
     this.recognition = null;
+    this.mediaRecorder = null;
+    this.recordedChunks = [];
     this.isRecognitionRunning = false;
     MicrophoneManager.instance = null as any;
   }

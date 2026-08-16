@@ -263,6 +263,62 @@ async function startServer() {
     }
   });
 
+  // High-accuracy AI Audio Speech-to-Text Transcription (Native Electron & Web Fallback)
+  app.post("/api/transcribe-audio", async (req, res) => {
+    try {
+      const { audioBase64, mimeType = "audio/webm" } = req.body;
+      if (!audioBase64) {
+        return res.status(400).json({ error: "audioBase64 is required" });
+      }
+
+      const key = process.env.GEMINI_API_KEY;
+      if (key && key !== "MY_GEMINI_API_KEY" && key.trim().length > 5) {
+        const ai = new GoogleGenAI({ apiKey: key });
+        const cleanMime = mimeType.split(";")[0];
+        const result = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: cleanMime,
+                    data: audioBase64
+                  }
+                },
+                {
+                  text: "Transcribe the user's speech in this audio clip verbatim. Return ONLY the transcribed words with proper punctuation, without any introductory or concluding comments. If silence or inaudible, return empty string."
+                }
+              ]
+            }
+          ]
+        });
+
+        const transcript = result.text?.replace(/^["'`]|["'`]$/g, '').trim() || "";
+        return res.json({ transcript, source: "gemini-flash" });
+      }
+
+      // OpenAI Whisper fallback
+      const openAiKey = process.env.OPENAI_API_KEY;
+      if (openAiKey && openAiKey.trim().length > 5) {
+        const openai = new OpenAI({ apiKey: openAiKey });
+        const buffer = Buffer.from(audioBase64, "base64");
+        const file = await OpenAI.toFile(buffer, "speech.webm", { type: mimeType });
+        const trans = await openai.audio.transcriptions.create({
+          model: "whisper-1",
+          file
+        });
+        return res.json({ transcript: trans.text || "", source: "openai-whisper" });
+      }
+
+      return res.json({ transcript: "", error: "No AI STT provider configured" });
+    } catch (err: any) {
+      console.warn("[Server] Audio transcription error:", err?.message || err);
+      res.json({ transcript: "", error: err?.message });
+    }
+  });
+
   // Direct SQLite Fallback Endpoints
   app.get("/api/emails", (req, res) => {
     const unreadOnly = req.query.unreadOnly === "true";

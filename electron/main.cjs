@@ -3,6 +3,14 @@ const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
 
+try {
+  require('dotenv').config({ path: path.join(__dirname, '../.env') });
+} catch {}
+
+if (process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) {
+  process.env.GOOGLE_API_KEY = process.env.GEMINI_API_KEY;
+}
+
 process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';
 
 // Enable Chromium speech recognition and microphone flags
