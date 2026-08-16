@@ -108,30 +108,44 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
   processCommandRef.current = processCommand;
 
   const interrupt = useCallback(() => {
-    if (window.speechSynthesis) { try { window.speechSynthesis.cancel(); } catch {} }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch {}
+      if (settingsRef.current.soundEffects) soundEffects.playBargeIn();
+    }
     microphoneManager.stop();
-    setState('interrupted');
-    setTimeout(() => setState('standby'), 300);
+    setState('standby');
   }, []);
 
   const startManualListening = useCallback(() => {
-    interrupt();
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch {}
+    }
     setState('listening');
-    setTranscript(''); setInterimTranscript('');
+    setTranscript('');
+    setInterimTranscript('');
     if (settingsRef.current.soundEffects) soundEffects.playWakeChime();
 
     microphoneManager.start('command', {
       onTranscript: (text: string, isFinal: boolean) => {
-        if (isFinal) { setTranscript(text); processCommandRef.current(text); }
-        else { setInterimTranscript(text); }
+        if (isFinal) {
+          setTranscript(text);
+          setInterimTranscript('');
+          processCommandRef.current(text);
+        } else {
+          setInterimTranscript(text);
+        }
       },
       onVolume: (lvl: number) => {
         setAudioLevel(lvl);
         setFrequencies(new Array(16).fill(0).map(() => Math.max(0, lvl * (0.5 + Math.random() * 0.5))));
       },
-      onError: (err: string) => { console.error(err); setIsMicAvailable(false); setState('standby'); }
+      onError: (err: string) => {
+        console.error(err);
+        setIsMicAvailable(false);
+        setState('standby');
+      }
     });
-  }, [interrupt]);
+  }, []);
 
   const stopManualListening = useCallback(() => {
     const txt = microphoneManager.isActive() ? (transcript || interimTranscript) : '';
