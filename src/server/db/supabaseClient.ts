@@ -218,10 +218,13 @@ export const dbRepository = {
     toolsUsed?: string[];
     latencyMs?: number;
   }) => {
+    if (!params.userId || !UUID_REGEX.test(params.userId)) {
+      return null; // Local SQLite handles storage when not authenticated to cloud
+    }
     const { data, error } = await getSupabaseAdmin()
       .from('conversations')
       .insert({
-        user_id: normalizeUserId(params.userId),
+        user_id: params.userId,
         session_id: params.sessionId || 'default',
         role: params.role,
         content: params.content,
