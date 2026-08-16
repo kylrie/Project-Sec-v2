@@ -34,7 +34,6 @@ export class MicrophoneManager {
   private interimTranscript = '';
   private finalTranscript = '';
 
-  // Singleton
   public static getInstance(): MicrophoneManager {
     if (!MicrophoneManager.instance) {
       MicrophoneManager.instance = new MicrophoneManager();
@@ -44,15 +43,13 @@ export class MicrophoneManager {
 
   private constructor() {}
 
-  // Initialize once: request mic permission and warm up AudioContext
   async initialize(): Promise<boolean> {
     if (this.stream?.active) return true;
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ 
+      this.stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        video: false 
+        video: false
       });
-      
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioCtx) {
         this.audioContext = new AudioCtx();
@@ -67,26 +64,28 @@ export class MicrophoneManager {
       }
       return true;
     } catch (e: any) {
-      console.error('[MicManager] Initialization failed:', e?.message || e);
+      console.error('[MicManager] Init failed:', e?.message || e);
       return false;
     }
   }
 
-  // Start the shared SpeechRecognition in a specific mode
   async start(mode: MicMode, callbacks: MicCallbacks = {}): Promise<boolean> {
-    const initialized = await this.initialize();
-    if (!initialized) {
+    const ok = await this.initialize();
+    if (!ok) {
       callbacks.onError?.('Microphone access denied');
       return false;
     }
 
-    // If already running in a different mode, stop first to prevent conflict
+    // If already running in a different mode, stop first
     if (this.isListening && this.mode !== mode) {
       this.stop();
     }
 
     this.mode = mode;
     this.callbacks = callbacks;
+    this.wakeWordDetected = false;
+    this.finalTranscript = '';
+    this.interimTranscript = '';
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -94,36 +93,33 @@ export class MicrophoneManager {
       return false;
     }
 
-    // Create recognition once, reuse it
     if (!this.recognition) {
       this.recognition = new SpeechRecognition();
       this.recognition.continuous = true;
       this.recognition.interimResults = true;
       this.recognition.lang = 'en-US';
 
-      this.recognition.onresult = (event: any) => {
-        this.handleResult(event);
-      };
-
-      this.recognition.onerror = (event: any) => {
-        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          console.error('[MicManager] Permission denied:', event.error);
+      this.recognition.onresult = (e: any) => this.handleResult(e);
+      this.recognition.onerror = (e: any) => {
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+          console.error('[MicManager] Permission denied:', e.error);
           this.callbacks.onError?.('Microphone permission denied');
           this.isListening = false;
           return;
         }
-        if (event.error !== 'no-speech' && event.error !== 'aborted') {
-          console.warn('[MicManager] Recognition notice:', event.error);
+        if (e.error !== 'no-speech' && e.error !== 'aborted') {
+          console.warn('[MicManager] Recognition notice:', e.error);
         }
       };
-
       this.recognition.onend = () => {
-        if (this.isListening) {
-          // Auto-restart if still supposed to be listening
-          setTimeout(() => {
-            if (this.isListening) this.safeStart();
-          }, 300);
+        if (!this.isListening) return;
+        // In wake-word mode, if wake word was active and we got silence, reset it
+        if (this.mode === 'wake-word' && this.wakeWordDetected) {
+          this.wakeWordDetected = false;
+          this.finalTranscript = '';
+          this.interimTranscript = '';
         }
+        setTimeout(() => this.safeStart(), 300);
       };
     }
 
@@ -148,27 +144,21 @@ export class MicrophoneManager {
     let final = '';
 
     for (let i = event.resultIndex; i < event.results.length; i++) {
-      const transcript = event.results[i][0].transcript;
-      if (event.results[i].isFinal) {
-        final += transcript;
-      } else {
-        interim += transcript;
-      }
+      const t = event.results[i][0].transcript;
+      if (event.results[i].isFinal) final += t;
+      else interim += t;
     }
 
     this.interimTranscript = interim;
     this.finalTranscript += final;
 
-    // Route based on mode
     if (this.mode === 'wake-word') {
-      const lower = (this.finalTranscript + interim).toLowerCase();
-      if (!this.wakeWordDetected && 
-          (lower.includes('hey ahri') || lower.includes('hi ahri') || lower.includes('okay ahri') || lower.includes('ahri') || lower.includes('friday') || lower.includes('jarvis'))) {
+      const text = (this.finalTranscript + interim).toLowerCase();
+      if (!this.wakeWordDetected && /hey ahri|hi ahri|okay ahri|ahri|friday|jarvis/.test(text)) {
         this.wakeWordDetected = true;
         this.callbacks.onWakeWord?.();
         this.resetSilenceTimer();
       }
-      // After wake word, route final transcripts as commands
       if (this.wakeWordDetected && final) {
         const clean = final.replace(/^(?:hey\s+|hi\s+|okay\s+)?(?:ahri|friday|jarvis)[,\s]*/i, '').trim();
         if (clean) {
@@ -185,7 +175,7 @@ export class MicrophoneManager {
   private resetSilenceTimer() {
     if (this.silenceTimer) clearTimeout(this.silenceTimer);
     this.silenceTimer = setTimeout(() => {
-      if (this.mode === 'wake-word' && this.wakeWordDetected) {
+      if (this.mode === 'wake-word') {
         this.wakeWordDetected = false;
         this.finalTranscript = '';
         this.interimTranscript = '';
@@ -195,71 +185,47 @@ export class MicrophoneManager {
 
   private startVolumeLoop() {
     if (!this.analyser) return;
-    const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-    
-    const update = () => {
+    const data = new Uint8Array(this.analyser.frequencyBinCount);
+    const loop = () => {
       if (!this.isListening || !this.analyser) return;
-      this.analyser.getByteFrequencyData(dataArray);
+      this.analyser.getByteFrequencyData(data);
       let sum = 0;
-      for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-      const avg = sum / dataArray.length / 255;
-      this.callbacks.onVolume?.(avg);
-      this.animFrameId = requestAnimationFrame(update);
+      for (let i = 0; i < data.length; i++) sum += data[i];
+      this.callbacks.onVolume?.(sum / data.length / 255);
+      this.animFrameId = requestAnimationFrame(loop);
     };
-    
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
-    this.animFrameId = requestAnimationFrame(update);
+    this.animFrameId = requestAnimationFrame(loop);
   }
 
   stop() {
     this.isListening = false;
     this.mode = 'idle';
     this.wakeWordDetected = false;
-    this.finalTranscript = '';
-    this.interimTranscript = '';
-    
     if (this.silenceTimer) clearTimeout(this.silenceTimer);
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
-    
     if (this.recognition) {
-      try {
-        this.recognition.stop();
-      } catch {}
-      // Do NOT destroy the recognition instance, just stop it
-      // so it can be restarted in a different mode
+      try { this.recognition.stop(); } catch {}
     }
   }
 
-  // Full teardown (call on app quit)
   destroy() {
     this.stop();
-    if (this.stream) {
-      this.stream.getTracks().forEach(t => t.stop());
-      this.stream = null;
+    this.stream?.getTracks().forEach(t => t.stop());
+    this.stream = null;
+    if (this.audioContext?.state !== 'closed') {
+      try { this.audioContext?.close(); } catch {}
     }
-    if (this.audioContext && this.audioContext.state !== 'closed') {
-      try { this.audioContext.close(); } catch {}
-      this.audioContext = null;
-    }
+    this.audioContext = null;
     this.recognition = null;
     MicrophoneManager.instance = null as any;
   }
 
-  getStream(): MediaStream | null {
-    return this.stream;
-  }
-
-  getAudioContext(): AudioContext | null {
-    return this.audioContext;
-  }
-
-  getMode(): MicMode {
-    return this.mode;
-  }
-
-  isActive(): boolean {
-    return this.isListening;
-  }
+  getStream(): MediaStream | null { return this.stream; }
+  getAudioContext(): AudioContext | null { return this.audioContext; }
+  getAnalyser(): AnalyserNode | null { return this.analyser; }
+  getMode(): MicMode { return this.mode; }
+  isActive(): boolean { return this.isListening; }
 }
 
 export const microphoneManager = MicrophoneManager.getInstance();
