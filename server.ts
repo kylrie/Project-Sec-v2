@@ -9,6 +9,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import http from "http";
 import url from "url";
 import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 import { initDatabase, dbRepository as sqliteDbRepository } from "./src/server/db/database.js";
 import { dbRepository as supabaseDbRepository } from "./src/server/db/supabaseClient.js";
 import { adminAuth } from "./src/server/lib/firebaseAdmin.js";
