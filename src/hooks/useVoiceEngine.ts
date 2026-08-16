@@ -6,6 +6,7 @@ import { tryParseLocalIntent } from '../services/localIntentParser';
 import { microphoneManager } from '../services/microphoneManager';
 import { userMemory } from '../services/userMemory';
 import { detectPersonas } from '../services/companionRegistry';
+import { detectSkill, executeSkillStep } from '../skills';
 
 interface UseVoiceEngineProps {
   settings: VoiceSettings;
@@ -83,14 +84,37 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       return;
     }
 
+    // 1. Detect Multi-Step Skills or Specialist Personas
+    const matchedSkill = detectSkill(clean);
     const detectedSpecialists = detectPersonas(clean);
+    if (matchedSkill && !detectedSpecialists.includes(matchedSkill.primaryPersona)) {
+      detectedSpecialists.push(matchedSkill.primaryPersona);
+    }
     setActivePersonas(detectedSpecialists);
-    setActivities(detectedSpecialists.map(p => ({
-      personaId: p,
-      action: p === 'ahri' ? 'Analyzing command...' : `Specialist ${p} evaluating task...`,
-      status: 'running'
-    })));
 
+    // If a multi-step skill is triggered, initialize workflow steps on the HUD
+    if (matchedSkill) {
+      setActivities(matchedSkill.steps.map((s, idx) => ({
+        personaId: s.personaId || matchedSkill.primaryPersona,
+        action: s.description,
+        status: idx === 0 ? 'running' : 'running'
+      })));
+
+      // Pre-execute local workflow integration if needed
+      for (const step of matchedSkill.steps) {
+        if (step.type === 'api') {
+          await executeSkillStep(step, clean);
+        }
+      }
+    } else {
+      setActivities(detectedSpecialists.map(p => ({
+        personaId: p,
+        action: p === 'ahri' ? 'Analyzing executive intent...' : `Specialist ${p} evaluating task...`,
+        status: 'running'
+      })));
+    }
+
+    // 2. Single Unified Gemini 3.7 Pro Agentic Call
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 12000);
     try {
@@ -101,6 +125,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
           message: clean,
           userContext: userMemory.buildContextPrompt(),
           personas: detectedSpecialists,
+          skillId: matchedSkill?.id,
           context: hist.slice(-4).map(h => ({ role: h.role, text: h.text })),
           personality: settings.personality,
           userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone
