@@ -3,6 +3,8 @@ const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
 
+process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';
+
 // Enable Chromium speech recognition and microphone flags
 app.commandLine.appendSwitch('enable-speech-dispatcher');
 app.commandLine.appendSwitch('use-fake-ui-for-media-stream');

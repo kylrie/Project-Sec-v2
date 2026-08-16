@@ -27,6 +27,8 @@ export class MicrophoneManager {
   private recognition: any = null;
   private mode: MicMode = 'idle';
   private isListening = false;
+  private isRecognitionRunning = false;
+  private consecutiveNetworkErrors = 0;
   private callbacks: MicCallbacks = {};
   private animFrameId: number | null = null;
   private silenceTimer: any = null;
@@ -44,7 +46,7 @@ export class MicrophoneManager {
   private constructor() {}
 
   async initialize(): Promise<boolean> {
-    if (this.stream?.active) return true;
+    if (this.stream && this.stream.active) return true;
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -100,21 +102,43 @@ export class MicrophoneManager {
       this.recognition.interimResults = true;
       this.recognition.lang = 'en-US';
 
-      this.recognition.onresult = (e: any) => this.handleResult(e);
+      this.recognition.onstart = () => {
+        this.isRecognitionRunning = true;
+      };
+
+      this.recognition.onresult = (e: any) => {
+        this.consecutiveNetworkErrors = 0;
+        this.handleResult(e);
+      };
+
       this.recognition.onerror = (e: any) => {
         if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
           console.error('[MicManager] Permission denied:', e.error);
           this.callbacks.onError?.('Microphone permission denied');
           this.isListening = false;
+          this.isRecognitionRunning = false;
           return;
         }
-        if (e.error !== 'no-speech' && e.error !== 'aborted') {
+        if (e.error === 'network') {
+          this.consecutiveNetworkErrors++;
+          if (this.consecutiveNetworkErrors === 1 || this.consecutiveNetworkErrors % 10 === 0) {
+            console.warn('[MicManager] Web Speech API network reconnecting (attempt ' + this.consecutiveNetworkErrors + ')...');
+          }
+        } else {
+          this.consecutiveNetworkErrors = 0;
+        }
+        if (e.error !== 'no-speech' && e.error !== 'aborted' && e.error !== 'network') {
           console.warn('[MicManager] Recognition notice:', e.error);
         }
       };
+
       this.recognition.onend = () => {
+        this.isRecognitionRunning = false;
         if (!this.isListening) return;
-        setTimeout(() => this.safeStart(), 300);
+        const retryDelay = this.consecutiveNetworkErrors > 0
+          ? Math.min(4000, 1000 + this.consecutiveNetworkErrors * 500)
+          : 300;
+        setTimeout(() => this.safeStart(), retryDelay);
       };
     }
 
@@ -125,12 +149,14 @@ export class MicrophoneManager {
   }
 
   private safeStart() {
+    if (!this.isListening || this.isRecognitionRunning || !this.recognition) return;
     try {
-      if (this.recognition && (!('readyState' in this.recognition) || this.recognition.readyState !== 1)) {
-        this.recognition.start();
-      }
+      this.recognition.start();
+      this.isRecognitionRunning = true;
     } catch (e: any) {
-      console.warn('[MicManager] Start notice:', e?.message);
+      if (!e?.message?.includes('already started')) {
+        console.warn('[MicManager] Start notice:', e?.message);
+      }
     }
   }
 
@@ -195,6 +221,7 @@ export class MicrophoneManager {
 
   stop() {
     this.isListening = false;
+    this.isRecognitionRunning = false;
     this.mode = 'idle';
     this.wakeWordDetected = false;
     if (this.silenceTimer) clearTimeout(this.silenceTimer);
@@ -213,6 +240,7 @@ export class MicrophoneManager {
     }
     this.audioContext = null;
     this.recognition = null;
+    this.isRecognitionRunning = false;
     MicrophoneManager.instance = null as any;
   }
 
