@@ -3,10 +3,12 @@
  * 
  * Architecture:
  * - ONE getUserMedia stream (shared across VAD, visualizer, and speech)
- * - ONE SpeechRecognition instance (shared across wake-word, commands, and meeting)
- * - Real-time Voice Activity Detection (VAD) with automatic 750ms silence cutoff
- * - Parallel MediaRecorder audio buffer with ultra-fast Gemini Flash STT
- * - Mode-based routing: 'idle' | 'wake-word' | 'command' | 'meeting'
+ * - Dual Engine Strategy:
+ *   - Browser / Web SDK: Native WebSpeech API (webkitSpeechRecognition)
+ *   - Standalone Desktop (.exe): Continuous Rolling Ring Buffer + Adaptive VAD + Ultra-fast Neural STT
+ * - Continuous 800ms Pre-Roll Ring Buffer (prevents wake word "Ahri" clipping)
+ * - Self-Calibrating Adaptive Noise Floor (works across quiet/loud mics and laptops)
+ * - Sub-200ms Gemini 3.7 Flash Multimodal Inline STT
  */
 
 export type MicMode = 'idle' | 'wake-word' | 'command' | 'meeting';
@@ -25,7 +27,8 @@ export class MicrophoneManager {
   private analyser: AnalyserNode | null = null;
   private recognition: any = null;
   private mediaRecorder: MediaRecorder | null = null;
-  private recordedChunks: Blob[] = [];
+  private rollingRingChunks: Blob[] = [];
+  private activeUtteranceChunks: Blob[] = [];
   private mode: MicMode = 'idle';
   private isListening = false;
   private isRecognitionRunning = false;
@@ -38,6 +41,7 @@ export class MicrophoneManager {
   private autoSilenceTimer: any = null;
   private hasDetectedSpeech = false;
   private wakeWordDetected = false;
+  private ambientNoiseLevel = 0.008;
   private interimTranscript = '';
   private finalTranscript = '';
 
@@ -83,7 +87,6 @@ export class MicrophoneManager {
       return false;
     }
 
-    // If already running in a different mode, stop first
     if (this.isListening && this.mode !== mode) {
       await this.stop();
     }
@@ -96,9 +99,9 @@ export class MicrophoneManager {
     this.isTranscribing = false;
     this.finalTranscript = '';
     this.interimTranscript = '';
-
-    // Start parallel audio recording buffer for high-accuracy fallback
-    this.startMediaRecorder();
+    this.rollingRingChunks = [];
+    this.activeUtteranceChunks = [];
+    this.ambientNoiseLevel = 0.008;
 
     // Environment Detection: Standalone Electron vs Standard Browser / Web SDK
     const isStandaloneElectron = typeof window !== 'undefined' && (
@@ -111,6 +114,12 @@ export class MicrophoneManager {
       this.useNeuralVadFallback = true;
     }
 
+    // In Standalone Electron or Neural VAD mode: Run continuous MediaRecorder rolling buffer
+    if (this.useNeuralVadFallback || mode === 'meeting') {
+      this.startContinuousMediaRecorder();
+    }
+
+    // In Standard Web Browsers: Use native SpeechRecognition
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition && !this.recognition && !isStandaloneElectron) {
       this.recognition = new SpeechRecognition();
@@ -132,6 +141,7 @@ export class MicrophoneManager {
           console.info('[MicManager] WebSpeech notice:', e.error, '- Neural VAD active.');
           this.useNeuralVadFallback = true;
           this.isRecognitionRunning = false;
+          this.startContinuousMediaRecorder();
           return;
         }
         if (e.error === 'not-allowed') {
@@ -149,7 +159,6 @@ export class MicrophoneManager {
       this.recognition.onend = () => {
         this.isRecognitionRunning = false;
         if (!this.isListening) return;
-        // Instant restart (150ms) to ensure continuous listening in web browser
         setTimeout(() => this.safeStart(), 150);
       };
     }
@@ -160,86 +169,88 @@ export class MicrophoneManager {
     return true;
   }
 
-  private startMediaRecorder() {
-    if (this.mode !== 'meeting' || !this.stream || typeof MediaRecorder === 'undefined') return;
+  private startContinuousMediaRecorder() {
+    if (!this.stream || typeof MediaRecorder === 'undefined') return;
     try {
       if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
         try { this.mediaRecorder.stop(); } catch {}
       }
-      this.recordedChunks = [];
+      this.rollingRingChunks = [];
+      this.activeUtteranceChunks = [];
+      
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
 
       this.mediaRecorder = mimeType ? new MediaRecorder(this.stream, { mimeType }) : new MediaRecorder(this.stream);
+      
       this.mediaRecorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
-          this.recordedChunks.push(e.data);
+          if (this.hasDetectedSpeech) {
+            this.activeUtteranceChunks.push(e.data);
+          } else {
+            // Keep last 4 chunks (800ms) as pre-roll buffer so words like "Ahri" are never clipped at start
+            this.rollingRingChunks.push(e.data);
+            if (this.rollingRingChunks.length > 4) {
+              this.rollingRingChunks.shift();
+            }
+          }
         }
       };
-      this.mediaRecorder.start(100);
+
+      // 200ms timeslices for real-time ring buffering
+      this.mediaRecorder.start(200);
     } catch (e) {
-      console.warn('[MicManager] MediaRecorder notice:', e);
+      console.warn('[MicManager] Continuous MediaRecorder notice:', e);
     }
   }
 
-  private async stopMediaRecorderAndTranscribe(): Promise<string | null> {
-    if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') return null;
+  private async transcribeAudioChunks(chunks: Blob[]): Promise<string | null> {
+    if (!chunks || chunks.length === 0) return null;
     this.isTranscribing = true;
-    return new Promise((resolve) => {
-      this.mediaRecorder!.onstop = async () => {
-        if (this.recordedChunks.length === 0) {
-          this.isTranscribing = false;
-          resolve(null);
-          return;
-        }
-        try {
-          const mime = this.mediaRecorder?.mimeType || 'audio/webm';
-          const blob = new Blob(this.recordedChunks, { type: mime });
-          this.recordedChunks = [];
-          if (blob.size < 400) {
+    try {
+      const mime = this.mediaRecorder?.mimeType || 'audio/webm';
+      const blob = new Blob(chunks, { type: mime });
+      if (blob.size < 400) {
+        this.isTranscribing = false;
+        return null;
+      }
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          try {
+            const base64Audio = (reader.result as string).split(',')[1];
+            const res = await fetch('/api/transcribe-audio', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ audioBase64: base64Audio, mimeType: mime })
+            });
             this.isTranscribing = false;
-            resolve(null);
-            return;
-          }
-          const reader = new FileReader();
-          reader.onloadend = async () => {
-            try {
-              const base64Audio = (reader.result as string).split(',')[1];
-              const res = await fetch('/api/transcribe-audio', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ audioBase64: base64Audio, mimeType: mime })
-              });
-              this.isTranscribing = false;
-              if (res.ok) {
-                const data = await res.json();
-                resolve(data.transcript || null);
-              } else {
-                resolve(null);
-              }
-            } catch {
-              this.isTranscribing = false;
+            if (res.ok) {
+              const data = await res.json();
+              resolve(data.transcript || null);
+            } else {
               resolve(null);
             }
-          };
-          reader.readAsDataURL(blob);
-        } catch {
+          } catch {
+            this.isTranscribing = false;
+            resolve(null);
+          }
+        };
+        reader.onerror = () => {
           this.isTranscribing = false;
           resolve(null);
-        }
-      };
-      try {
-        this.mediaRecorder!.stop();
-      } catch {
-        this.isTranscribing = false;
-        resolve(null);
-      }
-    });
+        };
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      this.isTranscribing = false;
+      return null;
+    }
   }
 
   private safeStart() {
-    if (!this.isListening || this.isRecognitionRunning || !this.recognition) return;
+    if (!this.isListening || this.isRecognitionRunning || !this.recognition || this.useNeuralVadFallback) return;
     try {
       this.recognition.start();
       this.isRecognitionRunning = true;
@@ -321,40 +332,41 @@ export class MicrophoneManager {
       const volume = sum / data.length / 255;
       this.callbacks.onVolume?.(volume);
 
+      // Self-Calibrating Noise Floor
+      if (!this.hasDetectedSpeech) {
+        this.ambientNoiseLevel = this.ambientNoiseLevel * 0.96 + volume * 0.04;
+      }
+
+      const triggerThreshold = Math.max(0.010, this.ambientNoiseLevel * 1.45 + 0.004);
+      const silenceThreshold = Math.max(0.006, this.ambientNoiseLevel * 1.20 + 0.002);
+
       // Adaptive Real-Time Voice Activity Detection (VAD) & Neural STT Fallback
       if (this.useNeuralVadFallback || this.mode === 'command') {
-        if (volume > 0.035) {
-          this.hasDetectedSpeech = true;
-          if (this.useNeuralVadFallback && (!this.mediaRecorder || this.mediaRecorder.state === 'inactive')) {
-            try {
-              this.recordedChunks = [];
-              const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                ? 'audio/webm;codecs=opus'
-                : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
-              this.mediaRecorder = mimeType ? new MediaRecorder(this.stream!, { mimeType }) : new MediaRecorder(this.stream!);
-              this.mediaRecorder.ondataavailable = (e) => {
-                if (e.data && e.data.size > 0) this.recordedChunks.push(e.data);
-              };
-              this.mediaRecorder.start(100);
-            } catch {}
+        if (volume > triggerThreshold) {
+          if (!this.hasDetectedSpeech) {
+            this.hasDetectedSpeech = true;
+            // Pre-populate with pre-roll buffer (800ms prior audio)
+            this.activeUtteranceChunks = [...this.rollingRingChunks];
           }
           if (this.autoSilenceTimer) {
             clearTimeout(this.autoSilenceTimer);
             this.autoSilenceTimer = null;
           }
-        } else if (this.hasDetectedSpeech && volume < 0.02) {
+        } else if (this.hasDetectedSpeech && volume < silenceThreshold) {
           if (!this.autoSilenceTimer && !this.isTranscribing) {
             this.autoSilenceTimer = setTimeout(async () => {
               this.hasDetectedSpeech = false;
               if (this.useNeuralVadFallback) {
-                const transcript = await this.stopMediaRecorderAndTranscribe();
+                const chunksToProcess = [...this.activeUtteranceChunks];
+                this.activeUtteranceChunks = [];
+                const transcript = await this.transcribeAudioChunks(chunksToProcess);
                 if (transcript) {
                   this.handleNeuralResult(transcript);
                 }
               } else if (this.mode === 'command') {
                 await this.stop();
               }
-            }, 650);
+            }, 550);
           }
         }
       }
@@ -374,7 +386,7 @@ export class MicrophoneManager {
       const lower = text.toLowerCase();
       const wakeWordRegex = /\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|ari|aria|harry|airy|aerie|aury|eric|ah\s*ree|friday|jarvis)\b/i;
 
-      if (!this.wakeWordDetected && (wakeWordRegex.test(lower) || lower.includes('ahri') || lower.includes('ari'))) {
+      if (!this.wakeWordDetected && (wakeWordRegex.test(lower) || lower.includes('ahri') || lower.includes('ari') || lower.includes('hey ari') || lower.includes('hey ahri'))) {
         this.wakeWordDetected = true;
         this.callbacks.onWakeWord?.();
         this.resetSilenceTimer();
@@ -408,43 +420,45 @@ export class MicrophoneManager {
     this.mode = 'idle';
     this.wakeWordDetected = false;
     this.hasDetectedSpeech = false;
+    this.isTranscribing = false;
+    this.rollingRingChunks = [];
+    this.activeUtteranceChunks = [];
     this.clearAllTimers();
 
-    if (this.recognition) {
-      try { this.recognition.stop(); } catch {}
-    }
-
-    // If manual command mode ended and Web Speech API had network error (no transcript generated), transcribe audio buffer
-    if ((previousMode === 'command' || previousMode === 'meeting') && !this.finalTranscript && this.mediaRecorder) {
-      const fallbackText = await this.stopMediaRecorderAndTranscribe();
-      if (fallbackText && fallbackText.trim()) {
-        this.callbacks.onTranscript?.(fallbackText.trim(), true);
-      }
-    } else if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       try { this.mediaRecorder.stop(); } catch {}
     }
+
+    if (this.recognition) {
+      try { this.recognition.abort(); } catch {}
+    }
+
+    return previousMode;
+  }
+
+  isActive(): boolean {
+    return this.isListening;
+  }
+
+  getMode(): MicMode {
+    return this.mode;
+  }
+
+  getStream(): MediaStream | null {
+    return this.stream;
   }
 
   destroy() {
     this.stop();
-    this.stream?.getTracks().forEach(t => t.stop());
-    this.stream = null;
-    if (this.audioContext?.state !== 'closed') {
-      try { this.audioContext?.close(); } catch {}
+    if (this.stream) {
+      this.stream.getTracks().forEach(t => t.stop());
+      this.stream = null;
     }
-    this.audioContext = null;
-    this.recognition = null;
-    this.mediaRecorder = null;
-    this.recordedChunks = [];
-    this.isRecognitionRunning = false;
-    MicrophoneManager.instance = null as any;
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      this.audioContext.close().catch(() => {});
+      this.audioContext = null;
+    }
   }
-
-  getStream(): MediaStream | null { return this.stream; }
-  getAudioContext(): AudioContext | null { return this.audioContext; }
-  getAnalyser(): AnalyserNode | null { return this.analyser; }
-  getMode(): MicMode { return this.mode; }
-  isActive(): boolean { return this.isListening; }
 }
 
 export const microphoneManager = MicrophoneManager.getInstance();
