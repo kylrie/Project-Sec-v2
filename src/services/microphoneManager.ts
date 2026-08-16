@@ -65,6 +65,7 @@ export class MicrophoneManager {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private processorNode: ScriptProcessorNode | null = null;
+  private workletNode: AudioWorkletNode | null = null;
   private muteGainNode: GainNode | null = null;
   private recognition: any = null;
   private rollingPcmBuffers: Float32Array[] = [];
@@ -127,13 +128,9 @@ export class MicrophoneManager {
         this.analyser.smoothingTimeConstant = 0.6;
         source.connect(this.analyser);
 
-        // 4. PCM Audio Capture Stream Processor
-        this.processorNode = this.audioContext.createScriptProcessor(2048, 1, 1);
-        this.processorNode.onaudioprocess = (e) => {
+        const onPcmChunk = (chunk: Float32Array) => {
           if (!this.isListening) return;
-          const inputData = e.inputBuffer.getChannelData(0);
-          const copy = new Float32Array(inputData);
-          
+          const copy = new Float32Array(chunk);
           if (this.hasDetectedSpeech) {
             this.activePcmBuffers.push(copy);
           } else {
@@ -145,12 +142,30 @@ export class MicrophoneManager {
           }
         };
 
-        // 5. Connect through a muted gain node to prevent mic loopback while keeping stream processor alive
         this.muteGainNode = this.audioContext.createGain();
         this.muteGainNode.gain.value = 0;
-        source.connect(this.processorNode);
-        this.processorNode.connect(this.muteGainNode);
         this.muteGainNode.connect(this.audioContext.destination);
+
+        let workletLoaded = false;
+        if (this.audioContext.audioWorklet) {
+          try {
+            await this.audioContext.audioWorklet.addModule('/pcm-processor.js');
+            this.workletNode = new AudioWorkletNode(this.audioContext, 'pcm-recorder-processor');
+            this.workletNode.port.onmessage = (e) => onPcmChunk(e.data);
+            source.connect(this.workletNode);
+            this.workletNode.connect(this.muteGainNode);
+            workletLoaded = true;
+          } catch {
+            // Graceful fallback to ScriptProcessorNode if AudioWorklet not accessible
+          }
+        }
+
+        if (!workletLoaded) {
+          this.processorNode = this.audioContext.createScriptProcessor(2048, 1, 1);
+          this.processorNode.onaudioprocess = (e) => onPcmChunk(e.inputBuffer.getChannelData(0));
+          source.connect(this.processorNode);
+          this.processorNode.connect(this.muteGainNode);
+        }
       }
       return true;
     } catch (e: any) {
@@ -491,6 +506,10 @@ export class MicrophoneManager {
   }
 
   private cleanupAudioPipeline() {
+    if (this.workletNode) {
+      try { this.workletNode.disconnect(); } catch {}
+      this.workletNode = null;
+    }
     if (this.processorNode) {
       try { this.processorNode.disconnect(); } catch {}
       this.processorNode = null;
