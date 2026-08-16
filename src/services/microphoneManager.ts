@@ -100,8 +100,19 @@ export class MicrophoneManager {
     // Start parallel audio recording buffer for high-accuracy fallback
     this.startMediaRecorder();
 
+    // Environment Detection: Standalone Electron vs Standard Browser / Web SDK
+    const isStandaloneElectron = typeof window !== 'undefined' && (
+      Boolean((window as any).electronAPI?.isElectron) ||
+      Boolean((window as any).process?.versions?.electron) ||
+      navigator.userAgent.includes('Electron')
+    );
+
+    if (isStandaloneElectron) {
+      this.useNeuralVadFallback = true;
+    }
+
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition && !this.recognition) {
+    if (SpeechRecognition && !this.recognition && !isStandaloneElectron) {
       this.recognition = new SpeechRecognition();
       this.recognition.continuous = true;
       this.recognition.interimResults = true;
@@ -118,7 +129,7 @@ export class MicrophoneManager {
 
       this.recognition.onerror = (e: any) => {
         if (e.error === 'service-not-allowed' || e.error === 'network') {
-          console.info('[MicManager] WebSpeech unavailable in standalone environment. Ultra-fast Neural VAD active.');
+          console.info('[MicManager] WebSpeech notice:', e.error, '- Neural VAD active.');
           this.useNeuralVadFallback = true;
           this.isRecognitionRunning = false;
           return;
@@ -138,7 +149,7 @@ export class MicrophoneManager {
       this.recognition.onend = () => {
         this.isRecognitionRunning = false;
         if (!this.isListening) return;
-        // Instant restart (150ms) to ensure continuous listening
+        // Instant restart (150ms) to ensure continuous listening in web browser
         setTimeout(() => this.safeStart(), 150);
       };
     }
