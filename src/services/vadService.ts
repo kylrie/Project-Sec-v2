@@ -139,5 +139,8 @@ export class VADService {
     }
     this.analyser = null;
     this.isSpeaking = false;
+    // Note: Do NOT close audioContext here if passed from outside.
+    // If this class created it internally, uncomment below:
+    // if (this.audioContext) { try { this.audioContext.close(); } catch {} this.audioContext = null; }
   }
 }

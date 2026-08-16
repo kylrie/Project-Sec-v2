@@ -15,94 +15,122 @@ export function useVoice(onTextComplete: (text: string) => void) {
   const [transcript, setTranscript] = useState('');
   const recognitionRef = useRef<any>(null);
   const synthesisRef = useRef<SpeechSynthesis | null>(null);
+  const statusRef = useRef<VoiceStatus>('idle');
 
+  // Sync status to ref so callbacks always see latest value without re-creating recognition
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  // Mount-only effect: Create SpeechRecognition ONCE, never recreate it
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    const rec = new SpeechRecognition();
+    rec.continuous = false;
+    rec.interimResults = true;
+    rec.lang = 'en-US';
+
+    rec.onresult = (event: any) => {
+      let currentTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        currentTranscript += event.results[i][0].transcript;
+      }
+      setTranscript(currentTranscript);
+
+      if (event.results[0]?.isFinal) {
+        onTextComplete(currentTranscript);
+        setStatus('processing');
+      }
+    };
+
+    rec.onstart = () => {
+      setStatus('listening');
+      setTranscript('');
+    };
+
+    rec.onend = () => {
+      // Use ref to check latest status, avoiding stale closure
+      if (statusRef.current === 'listening') {
+        setStatus('idle');
+      }
+    };
+
+    rec.onerror = (event: any) => {
+      console.error('Speech recognition error', event.error);
+      setStatus('idle');
+    };
+
+    recognitionRef.current = rec;
+
+    return () => {
+      try { rec.stop(); } catch {}
+    };
+  }, [onTextComplete]); // ← status INTENTIONALLY REMOVED from dependencies
+
+  // Initialize SpeechSynthesis
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        recognitionRef.current = new SpeechRecognition();
-        recognitionRef.current.continuous = false;
-        recognitionRef.current.interimResults = true;
-        recognitionRef.current.lang = 'en-US';
-
-        recognitionRef.current.onresult = (event: any) => {
-          let currentTranscript = '';
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            currentTranscript += event.results[i][0].transcript;
-          }
-          setTranscript(currentTranscript);
-          
-          if (event.results[0].isFinal) {
-            onTextComplete(currentTranscript);
-            setStatus('processing');
-          }
-        };
-
-        recognitionRef.current.onstart = () => {
-          setStatus('listening');
-          setTranscript('');
-        };
-
-        recognitionRef.current.onend = () => {
-          if (status === 'listening') {
-            setStatus('idle');
-          }
-        };
-
-        recognitionRef.current.onerror = (event: any) => {
-          console.error('Speech recognition error', event.error);
-          setStatus('idle');
+      synthesisRef.current = window.speechSynthesis;
+      if (synthesisRef.current && synthesisRef.current.getVoices) {
+        synthesisRef.current.getVoices();
+        synthesisRef.current.onvoiceschanged = () => {
+          synthesisRef.current?.getVoices();
         };
       }
-      
-      synthesisRef.current = window.speechSynthesis;
     }
-  }, [onTextComplete, status]);
+  }, []);
 
   const startListening = useCallback(() => {
     if (status === 'speaking' && synthesisRef.current) {
-      synthesisRef.current.cancel(); // Interrupt FRIDAY
+      synthesisRef.current.cancel();
     }
     if (recognitionRef.current) {
       try {
-        recognitionRef.current.start();
+        // Guard: only start if not already active
+        const rec = recognitionRef.current;
+        if (!('readyState' in rec) || rec.readyState !== 1) {
+          rec.start();
+        }
       } catch (e) {
-        console.error("Recognition already started");
+        console.error("Recognition start error:", e);
       }
     }
   }, [status]);
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch {}
     }
   }, []);
 
   const speak = useCallback((text: string) => {
     if (!synthesisRef.current) return;
-    
+
     setStatus('speaking');
-    synthesisRef.current.cancel(); // Cancel any ongoing speech
-    
+    synthesisRef.current.cancel();
+
     const utterance = new SpeechSynthesisUtterance(text);
-    
-    // Try to find a good female voice for FRIDAY
     const voices = synthesisRef.current.getVoices();
-    const preferredVoice = voices.find(v => v.name.includes('Google US English') || v.name.includes('Samantha') || v.name.includes('Female')) || voices[0];
+    const preferredVoice = voices.find(v => 
+      v.name.includes('Google US English') || 
+      v.name.includes('Samantha') || 
+      v.name.includes('Female')
+    ) || voices[0];
+    
     if (preferredVoice) {
       utterance.voice = preferredVoice;
     }
-    
-    utterance.rate = 1.05; // Slightly faster for efficiency
+
+    utterance.rate = 1.05;
     utterance.pitch = 1.0;
-    
-    utterance.onend = () => {
-      setStatus('idle');
-    };
-    
-    utterance.onerror = () => {
-      setStatus('idle');
-    };
+
+    utterance.onend = () => setStatus('idle');
+    utterance.onerror = () => setStatus('idle');
 
     synthesisRef.current.speak(utterance);
   }, []);

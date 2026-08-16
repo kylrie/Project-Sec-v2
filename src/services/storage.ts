@@ -286,6 +286,7 @@ export const DEFAULT_SETTINGS: VoiceSettings = {
   language: 'en-US',
   offlineFallback: true,
   soundEffects: true,
+  micDeviceId: '',
 };
 
 const SEED_CALENDAR: CalendarEvent[] = [];

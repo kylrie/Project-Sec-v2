@@ -16,6 +16,7 @@ export interface VoiceSettings {
   language: string;
   offlineFallback: boolean;
   soundEffects: boolean;
+  micDeviceId: string; // '' = system default
 }
 
 export interface ActiveTimer {

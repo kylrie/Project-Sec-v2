@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { VoiceSettings, FridayPersonality } from '../types/friday';
-import { X, Mic, Volume2, Sliders, Sparkles, Globe, Keyboard, Check, VolumeX, Layers, Smartphone, Monitor, Radio } from 'lucide-react';
+import { X, Mic, MicOff, Volume2, Sliders, Sparkles, Globe, Keyboard, Check, VolumeX, Layers, Smartphone, Monitor, Radio } from 'lucide-react';
 
 import { soundEffects } from '../services/audioEffects';
 import { Overlay } from '../client/plugins/Overlay';
@@ -25,6 +25,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [localSettings, setLocalSettings] = useState<VoiceSettings>(settings);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [availableMics, setAvailableMics] = useState<MediaDeviceInfo[]>([]);
+  const [micEnumDone, setMicEnumDone] = useState(false);
   const [bubbleEnabled, setBubbleEnabled] = useState(false);
   const [wakeWordEnabled, setWakeWordEnabled] = useState(Boolean(settings.isWakeWordEnabled ?? settings.continuousListening ?? true));
   const [isCheckingBubble, setIsCheckingBubble] = useState(false);
@@ -61,6 +63,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       window.speechSynthesis.onvoiceschanged = loadVoices;
     }
   }, []);
+
+  // Enumerate available microphone input devices
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      console.warn('[Settings] navigator.mediaDevices.enumerateDevices not available');
+      setMicEnumDone(true);
+      return;
+    }
+
+    const loadMics = async () => {
+      try {
+        // Request mic permission first so enumerateDevices returns labels
+        if (navigator.mediaDevices.getUserMedia) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach(t => t.stop());
+          } catch (permErr: any) {
+            console.warn('[Settings] getUserMedia pre-grant failed (enumeration may still work):', permErr?.message || permErr);
+          }
+        }
+
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter(d => d.kind === 'audioinput');
+        console.log('[Settings] Enumerated', audioInputs.length, 'audio input(s):', audioInputs.map(d => d.label || d.deviceId));
+        setAvailableMics(audioInputs);
+      } catch (e) {
+        console.warn('[Settings] Could not enumerate microphones:', e);
+      } finally {
+        setMicEnumDone(true);
+      }
+    };
+
+    setMicEnumDone(false);
+    loadMics();
+    // Re-enumerate if devices change (e.g. USB mic plugged in)
+    const handleDeviceChange = () => loadMics();
+    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+    return () => navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -206,6 +248,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-200 focus:outline-none focus:border-sky-500"
               />
             </div>
+          </div>
+
+          {/* Microphone Input Device Selection */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-mono text-zinc-300 uppercase tracking-wider flex items-center justify-between">
+              <span className="flex items-center">
+                <Mic className="w-3.5 h-3.5 text-cyan-400 mr-1.5" />
+                Microphone Input Device
+              </span>
+              {micEnumDone && availableMics.length === 0 && (
+                <span className="flex items-center text-[10px] text-amber-400 font-normal">
+                  <MicOff className="w-3 h-3 mr-1" />
+                  No mics detected
+                </span>
+              )}
+              {!micEnumDone && (
+                <span className="text-[10px] text-zinc-500 font-normal">Scanning…</span>
+              )}
+            </label>
+            <select
+              value={localSettings.micDeviceId}
+              onChange={(e) => setLocalSettings({ ...localSettings, micDeviceId: e.target.value })}
+              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-200 focus:outline-none focus:border-sky-500"
+            >
+              <option value="">System Default Microphone</option>
+              {availableMics.map((mic) => (
+                <option key={mic.deviceId} value={mic.deviceId}>
+                  {mic.label || `Microphone (${mic.deviceId.slice(0, 8)}…)`}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Personality Style */}
