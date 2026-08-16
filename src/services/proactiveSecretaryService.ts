@@ -69,9 +69,9 @@ export const proactiveSecretaryService = {
           commuteMinutes: 35
         },
         urgentInbox: {
-          urgentCount: 2,
-          vipSenders: ['Sarah Jenkins', 'Elena Vance'],
-          topSubject: 'Action Required: Finalized Q3 Budget Deck'
+          urgentCount: 0,
+          vipSenders: [],
+          topSubject: 'Zero urgent pending emails'
         },
         habitAndHealthCheck: {
           workoutDaysGap: 3,

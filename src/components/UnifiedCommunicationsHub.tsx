@@ -225,23 +225,22 @@ export const UnifiedCommunicationsHub: React.FC<UnifiedCommunicationsHubProps> =
     soundEffects.playAlert();
     const newCall: CallSession = {
       id: 'call-' + Date.now(),
-      callerName: 'Elena Vance (VP AI Strategy)',
-      callerHandle: '+1 (555) 749-1029',
+      callerName: 'Incoming Caller',
+      callerHandle: '+1 (555) 019-2834',
       state: 'ringing',
       startedAt: Date.now(),
       durationSec: 0,
       liveTranscript: [
-        'Elena: Glad I caught you!',
-        'Elena: We just completed the Whisper neural engine benchmark on local hardware.',
-        'Elena: Latency dropped to 142ms. Can we approve the rollout for Q3 tonight?'
+        'Caller: Hello, checking in regarding the upcoming schedule.',
+        'Caller: Please let me know when you are available.'
       ]
     };
     setIncomingCall(newCall);
 
     if (commSettings.dndMode === 'meeting') {
-      onSpeak(`Emergency call breakthrough from VIP contact Elena Vance. Incoming call on cellular line.`);
+      onSpeak(`Emergency call breakthrough from VIP contact. Incoming call on cellular line.`);
     } else {
-      onSpeak(`Incoming cellular call from Elena Vance, VP of AI Strategy. Shall I answer, decline, or send to voicemail?`);
+      onSpeak(`Incoming cellular call. Shall I answer, decline, or send to voicemail?`);
     }
   };
 
@@ -264,11 +263,11 @@ export const UnifiedCommunicationsHub: React.FC<UnifiedCommunicationsHubProps> =
     if (!incomingCall) return;
     soundEffects.playAcknowledge();
     setIncomingCall({ ...incomingCall, state: 'voicemail' });
-    onSpeak(`Routing to FRIDAY Voicemail. Live audio transcription active.`);
+    onSpeak(`Routing to AHRI Voicemail. Live audio transcription active.`);
     
     setTimeout(() => {
       setIncomingCall(null);
-      onSpeak(`Voicemail recorded and transcribed from Elena Vance: "Please call back regarding the Q3 neural model deployment window."`);
+      onSpeak(`Voicemail recorded and transcribed from caller.`);
     }, 4000);
   };
 

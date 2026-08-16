@@ -476,7 +476,7 @@ Response:
   "executiveSummary": ["Approved Q3 targets"],
   "keyDecisions": ["Launch on Friday"],
   "actionItems": [
-    { "task": "Publish build", "owner": "Marcus", "deadline": "5 PM" }
+    { "task": "Publish build", "owner": "Lead", "deadline": "5 PM" }
   ],
   "spokenBriefing": "The board meeting concluded with all Q3 targets approved."
 }`}

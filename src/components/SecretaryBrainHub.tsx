@@ -300,8 +300,8 @@ export const SecretaryBrainHub: React.FC<SecretaryBrainHubProps> = ({
                     2 Urgent
                   </span>
                 </div>
-                <div className="text-sm font-semibold text-white truncate">Sarah Jenkins (Budget)</div>
-                <p className="text-xs text-slate-400 mt-1">Elena Vance (Neural Model)</p>
+                <div className="text-sm font-semibold text-white truncate">Inbox Stream Active</div>
+                <p className="text-xs text-slate-400 mt-1">Zero urgent pending actions</p>
               </div>
 
               {/* Card 4: Health & Habit Gap */}

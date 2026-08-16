@@ -642,7 +642,7 @@ export const GoogleWorkspaceHub: React.FC<GoogleWorkspaceHubProps> = ({
                   type="text"
                   value={emailSearchQuery}
                   onChange={(e) => setEmailSearchQuery(e.target.value)}
-                  placeholder="Search emails (e.g. budget, sarah)..."
+                  placeholder="Search emails (e.g. budget, urgent)..."
                   className="w-full pl-8 pr-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-sky-500 font-mono"
                 />
               </div>

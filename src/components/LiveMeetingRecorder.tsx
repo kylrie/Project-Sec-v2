@@ -372,7 +372,7 @@ export const LiveMeetingRecorder: React.FC<LiveMeetingRecorderProps> = ({ onSpea
           <div>
             <div className="flex items-center space-x-2">
               <h2 className="text-base font-bold text-zinc-100 font-mono uppercase tracking-wider">
-                FRIDAY Meeting Intelligence
+                AHRI Meeting Intelligence
               </h2>
               <span className="px-2 py-0.5 bg-zinc-900 border border-zinc-700 text-[10px] text-zinc-400 font-mono rounded-md">
                 v2.5 Neural Whisper
@@ -961,7 +961,7 @@ export const LiveMeetingRecorder: React.FC<LiveMeetingRecorderProps> = ({ onSpea
                 type="text"
                 value={newSpeakerName}
                 onChange={(e) => setNewSpeakerName(e.target.value)}
-                placeholder="e.g. Sarah Jenkins (Finance)"
+                placeholder="e.g. Speaker Name (Role)"
                 className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-sky-500"
               />
             </div>

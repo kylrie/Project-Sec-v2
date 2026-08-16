@@ -52,10 +52,10 @@ export function Dashboard() {
         <div className="flex-1 overflow-y-auto space-y-3">
           <div className="p-3 rounded-xl border border-zinc-800 bg-zinc-950/50 hover:bg-zinc-800/50 transition-colors">
             <div className="flex justify-between items-start mb-1">
-              <span className="text-sm font-medium text-zinc-200">Sarah Jenkins</span>
+              <span className="text-sm font-medium text-zinc-200">System Security</span>
               <span className="text-xs text-zinc-500">10m ago</span>
             </div>
-            <p className="text-xs text-zinc-400 line-clamp-2">Quarterly report finalized. Please review before the board meeting.</p>
+            <p className="text-xs text-zinc-400 line-clamp-2">OAuth token encryption verified. Zero security warnings.</p>
           </div>
           <div className="p-3 rounded-xl border border-zinc-800 bg-zinc-950/50 hover:bg-zinc-800/50 transition-colors">
             <div className="flex justify-between items-start mb-1">

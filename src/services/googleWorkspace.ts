@@ -544,7 +544,7 @@ class GoogleWorkspaceService {
                 const fromRaw = getHeader('From');
                 const subject = getHeader('Subject') || '(No Subject)';
                 const date = getHeader('Date');
-                const isUrgent = /urgent|asap|deadline|critical|immediate/i.test(subject) || /sarah|boss|executive/i.test(fromRaw);
+                const isUrgent = /urgent|asap|deadline|critical|immediate/i.test(subject) || /boss|executive/i.test(fromRaw);
 
                 fetchedList.push({
                   id: msgData.id,

@@ -99,7 +99,7 @@ export function tryParseLocalIntent(rawText: string): LocalParsedResult | null {
     };
   }
 
-  // 5. Draft Email: e.g. "draft an email to Sarah saying I'll be 10 minutes late", "draft email to John Vance"
+  // 5. Draft Email: e.g. "draft an email to Alex saying I'll be 10 minutes late", "draft email to John Vance"
   const draftMatch = text.match(/draft (?:an )?email to ([a-zA-Z\s]+?)(?: saying| about| that) (.+)/i) ||
                      text.match(/send (?:an )?email to ([a-zA-Z\s]+?)(?: saying| about| that) (.+)/i);
   if (draftMatch) {
@@ -130,7 +130,7 @@ export function tryParseLocalIntent(rawText: string): LocalParsedResult | null {
     }
   }
 
-  // 7. Search Emails: "find that email from Sarah about the budget", "search emails for budget"
+  // 7. Search Emails: "find that email from Alex about the budget", "search emails for budget"
   const searchEmailMatch = text.match(/(?:find|search) (?:that |the )?emails? (?:from|about|for) (.+)/i);
   if (searchEmailMatch) {
     const query = searchEmailMatch[1].trim();
@@ -415,7 +415,7 @@ export function tryParseLocalIntent(rawText: string): LocalParsedResult | null {
   }
 
   // 19. Communications & Telephony Voice Commands
-  // 19a. Phone Call: "call John", "call Mom", "dial Sarah", "call +1 555-019-2834"
+  // 19a. Phone Call: "call John", "call Mom", "dial Alex", "call +1 555-019-2834"
   const callMatch = text.match(/(?:call|dial|phone) (?:up )?([a-zA-Z0-9\s+()-]+)/i);
   if (callMatch && !/meeting|minutes|timer|task|uber|viber/i.test(text)) {
     const contactTarget = callMatch[1].trim();
@@ -450,7 +450,7 @@ export function tryParseLocalIntent(rawText: string): LocalParsedResult | null {
     return {
       isHandledLocally: true,
       intent: 'send_to_voicemail',
-      spokenReply: `Routing incoming call to FRIDAY AI Voicemail with automated transcript capture.`,
+      spokenReply: `Routing incoming call to AHRI AI Voicemail with automated transcript capture.`,
       actionData: { action: 'voicemail' }
     };
   }
@@ -460,12 +460,12 @@ export function tryParseLocalIntent(rawText: string): LocalParsedResult | null {
     return {
       isHandledLocally: true,
       intent: 'summarize_last_call',
-      spokenReply: `Retrieving call log: You spoke with Elena Vance for 4 minutes. She requested confirmation of the neural model deployment window tonight.`,
+      spokenReply: `Retrieving call log: You have zero recent recorded calls on record.`,
       actionData: { callSummary: true }
     };
   }
 
-  // 19d. SMS Texting: "tell Mom on SMS I'll be there at 7", "send SMS to Sarah saying approved", "text John saying I'm 10 mins late"
+  // 19d. SMS Texting: "tell Mom on SMS I'll be there at 7", "send SMS to Alex saying approved", "text John saying I'm 10 mins late"
   const smsMatch = text.match(/(?:send (?:an? )?sms to|text|send text to) ([a-zA-Z0-9\s]+?)(?: saying| with message| that|:) (.+)/i);
   if (smsMatch) {
     const recipient = smsMatch[1].trim();
@@ -478,7 +478,7 @@ export function tryParseLocalIntent(rawText: string): LocalParsedResult | null {
     };
   }
 
-  // 19e. Viber Integration: "tell John on Viber I'll be 10 minutes late", "send Viber message to Sarah saying hello"
+  // 19e. Viber Integration: "tell John on Viber I'll be 10 minutes late", "send Viber message to Alex saying hello"
   const viberMatch = text.match(/(?:tell|message|send(?: a)? message to|send viber to) ([a-zA-Z0-9\s]+?) on viber(?: saying| that|:) (.+)/i) ||
                      text.match(/(?:on viber(?: tell| message) ([a-zA-Z0-9\s]+?)(?: saying| that|:) (.+))/i);
   if (viberMatch) {
@@ -492,7 +492,7 @@ export function tryParseLocalIntent(rawText: string): LocalParsedResult | null {
     };
   }
 
-  // 19f. Facebook Messenger: "tell Sarah on Messenger I'm on my way", "send Messenger message to Elena saying review complete"
+  // 19f. Facebook Messenger: "tell John on Messenger I'm on my way", "send Messenger message to Alex saying review complete"
   const messengerMatch = text.match(/(?:tell|message|send(?: a)? message to) ([a-zA-Z0-9\s]+?) on (?:facebook )?messenger(?: saying| that|:) (.+)/i);
   if (messengerMatch) {
     const recipient = messengerMatch[1].trim();

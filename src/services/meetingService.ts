@@ -13,9 +13,9 @@ import { soundEffects } from './audioEffects';
 import { microphoneManager } from './microphoneManager';
 
 const STORAGE_KEYS = {
-  MEETING_SESSIONS: 'friday_meeting_sessions_v1',
-  SPEAKER_PROFILES: 'friday_speaker_voice_profiles_v1',
-  ACTIVE_SESSION: 'friday_active_meeting_session_v1'
+  MEETING_SESSIONS: 'ahri_meeting_sessions_v2',
+  SPEAKER_PROFILES: 'ahri_speaker_voice_profiles_v2',
+  ACTIVE_SESSION: 'ahri_active_meeting_session_v2'
 };
 
 export const AVAILABLE_PLUGINS: MeetingProviderPlugin[] = [
@@ -58,150 +58,8 @@ export const AVAILABLE_PLUGINS: MeetingProviderPlugin[] = [
 ];
 
 const DEFAULT_SPEAKERS: MeetingSpeaker[] = [
-  { id: 'spk-1', name: 'Executive Lead', color: '#0ea5e9', role: 'Executive Lead', isLearned: true, utteranceCount: 8 },
-  { id: 'spk-2', name: 'Elena Vance (Lead Architect)', color: '#8b5cf6', role: 'System Architect', isLearned: true, utteranceCount: 6 },
-  { id: 'spk-3', name: 'Marcus Reed (DevOps)', color: '#10b981', role: 'Cloud Lead', isLearned: true, utteranceCount: 4 },
-  { id: 'spk-4', name: 'Sarah Jenkins (Finance)', color: '#f59e0b', role: 'Finance Director', isLearned: true, utteranceCount: 3 }
+  { id: 'spk-1', name: 'Executive Lead', color: '#0ea5e9', role: 'Executive Lead', isLearned: true, utteranceCount: 0 }
 ];
-
-const INITIAL_SAMPLE_SESSION: MeetingSession = {
-  id: 'meet-seed-01',
-  title: 'Executive Architecture & Strategic Roadmap Sync',
-  date: 'Today',
-  startTime: '10:00 AM',
-  durationSeconds: 115,
-  status: 'completed',
-  mode: 'online_google_meet',
-  platform: 'google_meet',
-  meetUrl: 'https://meet.google.com/fri-dayx-sec',
-  speakers: DEFAULT_SPEAKERS,
-  autoAnnounceLegalNotice: true,
-  complianceAnnounced: true,
-  transcripts: [
-    {
-      id: 'ts-1',
-      speaker: 'Executive Lead',
-      speakerId: 'spk-1',
-      timestamp: '00:05',
-      timeSeconds: 5,
-      text: 'Good morning team. We need to finalize the cross-platform latency requirements for the neural voice engine before deploying to executives.',
-      pitchLevel: 'mid',
-      confidence: 0.98
-    },
-    {
-      id: 'ts-2',
-      speaker: 'Elena Vance (Lead Architect)',
-      speakerId: 'spk-2',
-      timestamp: '00:24',
-      timeSeconds: 24,
-      text: 'Our on-device Whisper.cpp pipeline delivers sub-200ms latency on Apple Silicon and 380ms on Snapdragon chips. We have achieved zero cloud telemetry dependencies.',
-      pitchLevel: 'high',
-      confidence: 0.96
-    },
-    {
-      id: 'ts-3',
-      speaker: 'Marcus Reed (DevOps)',
-      speakerId: 'spk-3',
-      timestamp: '00:52',
-      timeSeconds: 52,
-      text: 'On the server side, the Google Workspace bridge is fully synchronized with Google Calendar, Gmail, and Google Tasks with encrypted token storage.',
-      flagged: true,
-      flagReason: 'Executive milestone verification',
-      pitchLevel: 'low',
-      confidence: 0.95
-    },
-    {
-      id: 'ts-4',
-      speaker: 'Sarah Jenkins (Finance)',
-      speakerId: 'spk-4',
-      timestamp: '01:15',
-      timeSeconds: 75,
-      text: 'We also agreed to keep the initial deployment budget capped at $450k and move the global public rollout to Q2 next year.',
-      flagged: true,
-      flagReason: 'Budget & schedule decision',
-      pitchLevel: 'high',
-      confidence: 0.97
-    },
-    {
-      id: 'ts-5',
-      speaker: 'Executive Lead',
-      speakerId: 'spk-1',
-      timestamp: '01:42',
-      timeSeconds: 102,
-      text: 'Agreed. Elena, please finalize the desktop screen recording capture module by Friday 5 PM. Marcus, verify the WebSocket real-time audio bridge by tomorrow noon.',
-      pitchLevel: 'mid',
-      confidence: 0.99
-    }
-  ],
-  liveRunningNotes: [
-    'Sub-200ms latency verified on local-first Whisper engine.',
-    'Google Workspace Calendar and Tasks bidirectional sync verified.',
-    'Agreed to move global launch milestone to Q2.',
-    'Elena Vance assigned desktop screen capture module by Friday 5 PM.'
-  ],
-  executiveSummary: [
-    'Validated sub-200ms voice processing benchmarks with on-device Whisper.cpp model on Apple Silicon.',
-    'Finalized bidirectional Google Workspace integration across Google Calendar, Gmail triage, and Google Tasks.',
-    'Confirmed launch date adjustment to Q2 with capped $450k infrastructure allocation.'
-  ],
-  keyDecisions: [
-    'Decided to move the global public release to Q2 to ensure exhaustive security audits.',
-    'Adopted local-first Whisper.cpp model as primary engine with encrypted zero-telemetry default.',
-    'Capped infrastructure allocation for early access rollout at $450k.'
-  ],
-  detailedMinutes: [
-    {
-      topic: 'Neural Voice Engine Benchmarks',
-      timestamp: '00:05',
-      keyPoints: [
-        'Reviewed on-device latency metrics across Apple Silicon (sub-200ms) and Snapdragon (380ms).',
-        'Confirmed local-first architecture eliminates cloud audio exposure.'
-      ]
-    },
-    {
-      topic: 'Workspace Infrastructure & Security',
-      timestamp: '00:52',
-      keyPoints: [
-        'Marcus confirmed Google Workspace OAuth endpoints are operating with strict client isolation.',
-        'Rolling 7-day cryptographic retention policy in place.'
-      ]
-    },
-    {
-      topic: 'Timeline, Budget & Action Assignments',
-      timestamp: '01:15',
-      keyPoints: [
-        'Sarah Jenkins confirmed budget cap approval.',
-        'Target launch rescheduled for Q2 next year.'
-      ]
-    }
-  ],
-  actionItems: [
-    {
-      id: 'act-1',
-      task: 'Finalize desktop screen and audio capture module for Google Meet recording',
-      owner: 'Elena Vance',
-      deadline: 'Friday, 5:00 PM',
-      priority: 'high',
-      syncedToGoogleTasks: true
-    },
-    {
-      id: 'act-2',
-      task: 'Verify WebSocket real-time audio streaming bridge and container ingress',
-      owner: 'Marcus Reed',
-      deadline: 'Tomorrow, 12:00 PM',
-      priority: 'high',
-      syncedToGoogleTasks: true
-    },
-    {
-      id: 'act-3',
-      task: 'Circulate revised Q3 budget deck to audit committee',
-      owner: 'Sarah Jenkins',
-      deadline: 'Today, 5:00 PM',
-      priority: 'medium',
-      syncedToGoogleTasks: false
-    }
-  ]
-};
 
 class MeetingService {
   private activeRecognition: any = null;
@@ -213,9 +71,9 @@ class MeetingService {
   public getSavedSessions(): MeetingSession[] {
     try {
       const stored = localStorage.getItem(STORAGE_KEYS.MEETING_SESSIONS);
-      return stored ? JSON.parse(stored) : [INITIAL_SAMPLE_SESSION];
+      return stored ? JSON.parse(stored) : [];
     } catch {
-      return [INITIAL_SAMPLE_SESSION];
+      return [];
     }
   }
 
