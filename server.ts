@@ -4,7 +4,6 @@ import compression from "compression";
 import express from "express";
 import path from "path";
 
-import { createServer as createViteServer } from "vite";
 import { WebSocketServer, WebSocket } from "ws";
 import http from "http";
 import url from "url";
@@ -946,6 +945,7 @@ Return JSON:
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
