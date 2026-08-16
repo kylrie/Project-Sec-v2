@@ -3,6 +3,10 @@ const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
 
+// Enable Chromium speech recognition and microphone flags
+app.commandLine.appendSwitch('enable-speech-dispatcher');
+app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
+
 let mainWindow;
 let tray;
 let serverProcess;
@@ -232,8 +236,9 @@ function startBackgroundWakeWord() {
 
 app.whenReady().then(async () => {
   // FIX: Auto-grant microphone permissions for Web Speech API / wake word detection
+  const allowedPermissions = ['media', 'microphone', 'audioCapture', 'speech', 'speech-recognition', 'mediaKeySystem', 'notifications'];
+
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowedPermissions = ['media', 'microphone', 'audioCapture', 'mediaKeySystem'];
     if (allowedPermissions.includes(permission)) {
       console.log(`[Electron] Auto-granted permission: ${permission}`);
       callback(true);
@@ -245,7 +250,6 @@ app.whenReady().then(async () => {
 
   // FIX: Also handle permission checks (some Chromium versions use this instead)
   session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
-    const allowedPermissions = ['media', 'microphone', 'audioCapture', 'mediaKeySystem'];
     return allowedPermissions.includes(permission);
   });
 

@@ -51,21 +51,42 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     settingsRef.current = settings;
   }, [settings]);
 
+  // Safe helper to acquire microphone media stream without failing on stale device IDs
+  const getSafeMicStream = useCallback(async (preferredDeviceId?: string): Promise<MediaStream | null> => {
+    if (preferredDeviceId) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: { ideal: preferredDeviceId } },
+          video: false
+        });
+        return stream;
+      } catch (err) {
+        console.warn('[VoiceEngine] Preferred mic device unavailable, falling back to default:', err);
+      }
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      return stream;
+    } catch (err: any) {
+      console.error('[VoiceEngine] Complete getUserMedia failure:', err?.message || err);
+      return null;
+    }
+  }, []);
+
   // Mic warm-up: Pre-request getUserMedia on first user interaction so SpeechRecognition isn't blocked
   useEffect(() => {
     let warmed = false;
     const warmMic = async () => {
       if (warmed) return;
       try {
-        const deviceId = settingsRef.current?.micDeviceId;
-        const constraints: MediaStreamConstraints = {
-          audio: deviceId ? { deviceId: { exact: deviceId } } : true,
-          video: false
-        };
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        micStreamRef.current = stream;
-        setIsMicAvailable(true);
-        warmed = true;
+        const stream = await getSafeMicStream(settingsRef.current?.micDeviceId);
+        if (stream) {
+          micStreamRef.current = stream;
+          setIsMicAvailable(true);
+          warmed = true;
+        } else {
+          setIsMicAvailable(false);
+        }
       } catch (e: any) {
         console.warn('[VoiceEngine] Mic warm-up failed:', e?.message);
         setIsMicAvailable(false);
@@ -88,7 +109,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       window.removeEventListener('click', handleInteraction);
       window.removeEventListener('keydown', handleInteraction);
     };
-  }, []);
+  }, [getSafeMicStream]);
 
   // Initialize SpeechSynthesis and unlock on user interaction
   useEffect(() => {
@@ -118,19 +139,13 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
 
       // 1. Ensure media stream is active
       if (!micStreamRef.current || !micStreamRef.current.active) {
-        try {
-          const deviceId = settingsRef.current?.micDeviceId;
-          const constraints: MediaStreamConstraints = {
-            audio: deviceId ? { deviceId: { exact: deviceId } } : true,
-            video: false
-          };
-          const stream = await navigator.mediaDevices.getUserMedia(constraints);
-          micStreamRef.current = stream;
-        } catch (e: any) {
-          console.warn('[VoiceEngine] Microphone access not yet granted or busy:', e?.message);
+        const stream = await getSafeMicStream(settingsRef.current?.micDeviceId);
+        if (!stream) {
           isSettingUpMicRef.current = false;
+          setIsMicAvailable(false);
           return;
         }
+        micStreamRef.current = stream;
       }
 
       // 2. Reuse or create singleton AudioContext gracefully
@@ -147,7 +162,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       }
 
       if (ctx && ctx.state === 'suspended') {
-        await ctx.resume(); // Do not swallow. Analyser produces zeros while suspended.
+        await ctx.resume().catch(() => {});
       }
 
       // If analyser is already connected and running, avoid duplicate nodes
@@ -169,7 +184,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
         if (!vadServiceRef.current) {
           vadServiceRef.current = new VADService({
             silenceTimeoutMs: 1500,
-            energyThreshold: 0.022,
+            energyThreshold: 0.02,
             onSpeechEnd: () => {
               if (isListeningIntentRef.current) {
                 const pendingText = (transcriptRef.current || interimTranscriptRef.current).trim();
@@ -220,7 +235,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     } finally {
       isSettingUpMicRef.current = false;
     }
-  }, []);
+  }, [getSafeMicStream]);
 
   // Barge-In & Speech Interrupter
   const interrupt = useCallback(() => {
@@ -476,14 +491,18 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
         }
       }
 
+      const rawIncoming = (finalStr || interimStr).trim();
       setInterimTranscript(interimStr);
       interimTranscriptRef.current = interimStr;
+      if (finalStr) {
+        setTranscript(finalStr);
+        transcriptRef.current = finalStr;
+      }
 
-      const incoming = (finalStr || interimStr).trim();
-      const lower = incoming.toLowerCase();
+      const lower = rawIncoming.toLowerCase();
       const wakeTarget = (settingsRef.current.wakeWord || 'Hey Ahri').toLowerCase();
 
-      // Check for wake word trigger
+      // Check for wake word trigger if in standby
       if (!isListeningIntentRef.current && (
         lower.includes(wakeTarget) || 
         lower.includes('ahri') || 
@@ -495,11 +514,13 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
         setupAudioAnalyser();
         if (settingsRef.current.soundEffects) soundEffects.playWakeChime();
 
-        const match = incoming.match(new RegExp(`(?:hey\\s+)?(?:ahri|friday|jarvis)[,\\s]*(.*)`, 'i'));
+        const match = rawIncoming.match(new RegExp(`(?:hey\\s+)?(?:ahri|friday|jarvis)[,\\s]*(.*)`, 'i'));
         const remainder = match && match[1] ? match[1].trim() : '';
         if (remainder && finalStr) {
           setTranscript(remainder);
           transcriptRef.current = remainder;
+          setInterimTranscript('');
+          interimTranscriptRef.current = '';
           isListeningIntentRef.current = false;
           processCommandRef.current(remainder);
         }
@@ -508,12 +529,14 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
 
       // If active listening mode and final text received
       if (finalStr && isListeningIntentRef.current) {
-        setTranscript(finalStr);
-        transcriptRef.current = finalStr;
+        // Strip any leading wake word if present
+        const cleanedText = finalStr.replace(/^(?:hey\s+)?(?:ahri|friday|jarvis)[,\s]*/i, '').trim() || finalStr.trim();
+        setTranscript(cleanedText);
+        transcriptRef.current = cleanedText;
         setInterimTranscript('');
         interimTranscriptRef.current = '';
         isListeningIntentRef.current = false;
-        processCommandRef.current(finalStr);
+        processCommandRef.current(cleanedText);
       }
     };
 
@@ -524,7 +547,6 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
 
     recognition.onerror = (event: any) => {
       isRecognitionRunningRef.current = false;
-      // BUG FIX 4: Explicitly handle permission errors
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed' || event.error === 'audio-capture') {
         console.error('[VoiceEngine] Mic permission or audio capture failed:', event.error);
         setIsMicAvailable(false);
@@ -532,23 +554,39 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
         return;
       }
       if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        console.warn('Speech recognition status:', event.error);
+        console.warn('[VoiceEngine] Speech recognition status:', event.error);
       }
     };
 
     recognition.onend = () => {
       isRecognitionRunningRef.current = false;
-      if (settingsRef.current.continuousListening) {
-        try {
-          recognition.start();
-          isRecognitionRunningRef.current = true;
-        } catch {
-          // ignore
-        }
+      if (settingsRef.current.continuousListening || isListeningIntentRef.current) {
+        setTimeout(() => {
+          try {
+            if (!isRecognitionRunningRef.current && recognitionRef.current) {
+              recognitionRef.current.start();
+              isRecognitionRunningRef.current = true;
+            }
+          } catch (e: any) {
+            if (e?.name === 'InvalidStateError') {
+              isRecognitionRunningRef.current = true;
+            }
+          }
+        }, 50);
       } else {
         setState('standby');
       }
     };
+
+    // Initial start if continuous listening is already active
+    if (settingsRef.current.continuousListening) {
+      try {
+        recognition.start();
+        isRecognitionRunningRef.current = true;
+      } catch (e) {
+        console.warn('[VoiceEngine] Initial recognition start waiting for user interaction:', e);
+      }
+    }
 
     return () => {
       try {
@@ -567,7 +605,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
         micStreamRef.current.getTracks().forEach(t => t.stop());
       }
     };
-  }, []); // ← EMPTY dependency array. Mount only.
+  }, [setupAudioAnalyser]);
 
   // Effect B: React to language changes without recreating recognition
   useEffect(() => {
@@ -592,7 +630,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
         if (e?.name === 'InvalidStateError') {
           isRecognitionRunningRef.current = true;
         } else {
-          console.warn('Continuous recognition waiting for user gesture', e);
+          console.warn('[VoiceEngine] Continuous recognition waiting for user gesture', e);
         }
       }
     } else {
@@ -608,23 +646,21 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     const switchMic = async () => {
       const deviceId = settings.micDeviceId;
       try {
-        // Stop old stream
         if (micStreamRef.current) {
           micStreamRef.current.getTracks().forEach(t => t.stop());
           micStreamRef.current = null;
         }
-        const constraints: MediaStreamConstraints = {
-          audio: deviceId ? { deviceId: { exact: deviceId } } : true,
-          video: false
-        };
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        micStreamRef.current = stream;
-        setIsMicAvailable(true);
-        // Re-wire the audio analyser & VAD to the new stream
-        if (analyserRef.current) {
-          analyserRef.current = null;
+        const stream = await getSafeMicStream(deviceId);
+        if (stream) {
+          micStreamRef.current = stream;
+          setIsMicAvailable(true);
+          if (analyserRef.current) {
+            analyserRef.current = null;
+          }
+          setupAudioAnalyser();
+        } else {
+          setIsMicAvailable(false);
         }
-        setupAudioAnalyser();
       } catch (e: any) {
         console.warn('[VoiceEngine] Mic device switch failed:', e?.message);
         setIsMicAvailable(false);
@@ -633,21 +669,10 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     if (settings.micDeviceId !== undefined) {
       switchMic();
     }
-  }, [settings.micDeviceId, setupAudioAnalyser]);
+  }, [settings.micDeviceId, getSafeMicStream, setupAudioAnalyser]);
 
-  // Fix startManualListening to guard against double-start
-  const startManualListening = useCallback(() => {
-    if (audioContextRef.current?.state === 'suspended') {
-      audioContextRef.current.resume().catch(() => {});
-    }
-    setupAudioAnalyser();
-    if (synthesisRef.current) {
-      try {
-        synthesisRef.current.cancel();
-      } catch (e) {
-        console.warn('Cancel speech error', e);
-      }
-    }
+  // Start Manual Listening (Non-blocking, instant response)
+  const startManualListening = useCallback(async () => {
     isListeningIntentRef.current = true;
     setState('listening');
     setTranscript('');
@@ -655,6 +680,19 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     setInterimTranscript('');
     interimTranscriptRef.current = '';
     if (settingsRef.current.soundEffects) soundEffects.playWakeChime();
+
+    if (synthesisRef.current) {
+      try {
+        synthesisRef.current.cancel();
+      } catch (e) {
+        console.warn('Cancel speech error', e);
+      }
+    }
+
+    if (audioContextRef.current?.state === 'suspended') {
+      await audioContextRef.current.resume().catch(() => {});
+    }
+    await setupAudioAnalyser();
 
     if (recognitionRef.current) {
       try {
