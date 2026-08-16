@@ -148,7 +148,7 @@ export class MicrophoneManager {
   }
 
   private startMediaRecorder() {
-    if (!this.stream || typeof MediaRecorder === 'undefined') return;
+    if (this.mode !== 'meeting' || !this.stream || typeof MediaRecorder === 'undefined') return;
     try {
       if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
         try { this.mediaRecorder.stop(); } catch {}
@@ -253,16 +253,30 @@ export class MicrophoneManager {
     if (this.mode === 'wake-word') {
       const text = (this.finalTranscript + interim).toLowerCase();
       const wakeWordRegex = /\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|ari|aria|harry|airy|aerie|aury|eric|ah\s*ree|friday|jarvis)\b/i;
-      if (!this.wakeWordDetected && (wakeWordRegex.test(text) || text.includes('ahri') || text.includes('hey ari') || text.includes('hey ahri'))) {
+      
+      if (!this.wakeWordDetected && (wakeWordRegex.test(text) || text.includes('ahri') || text.includes('ari') || text.includes('hey ari') || text.includes('hey ahri'))) {
         this.wakeWordDetected = true;
         this.callbacks.onWakeWord?.();
+        this.finalTranscript = '';
+        this.interimTranscript = '';
         this.resetSilenceTimer();
       }
-      if (this.wakeWordDetected && final) {
-        const clean = final.replace(/\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|ari|aria|harry|airy|aerie|aury|eric|ah\s*ree|friday|jarvis)\b[,\s]*/gi, '').trim();
-        if (clean) {
-          this.callbacks.onTranscript?.(clean, true);
-          this.resetSilenceTimer();
+      
+      if (this.wakeWordDetected) {
+        if (interim) {
+          const cleanInterim = interim.replace(/\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|ari|aria|harry|airy|aerie|aury|eric|ah\s*ree|friday|jarvis)\b[,\s]*/gi, '').trim();
+          if (cleanInterim) {
+            this.callbacks.onTranscript?.(cleanInterim, false);
+            this.resetSilenceTimer();
+          }
+        }
+        if (final) {
+          const cleanFinal = final.replace(/\b(?:hey\s+|hi\s+|okay\s+)?(?:ahri|ari|aria|harry|airy|aerie|aury|eric|ah\s*ree|friday|jarvis)\b[,\s]*/gi, '').trim();
+          if (cleanFinal) {
+            this.callbacks.onTranscript?.(cleanFinal, true);
+            this.resetSilenceTimer();
+            this.finalTranscript = '';
+          }
         }
       }
     } else if (this.mode === 'command' || this.mode === 'meeting') {
@@ -279,7 +293,7 @@ export class MicrophoneManager {
         this.finalTranscript = '';
         this.interimTranscript = '';
       }
-    }, 3000);
+    }, 8000);
   }
 
   private startVolumeLoop() {
