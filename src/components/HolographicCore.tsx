@@ -9,6 +9,7 @@ export interface HolographicCoreProps {
   audioLevel: number;
   wakeWord: string;
   latencyMs: number | null;
+  activePersonas?: string[];
   onCoreClick: () => void;
   onInterrupt: () => void;
 }
@@ -18,6 +19,7 @@ export const HolographicCore: React.FC<HolographicCoreProps> = memo(({
   frequencies,
   audioLevel,
   wakeWord,
+  activePersonas = [],
   onCoreClick,
   onInterrupt
 }) => {
@@ -34,8 +36,8 @@ export const HolographicCore: React.FC<HolographicCoreProps> = memo(({
     ? frequencies.slice(0, 16).reduce((a, b) => a + b, 0) / 16
     : 0.1;
 
-  const stateRef = useRef({ state, isSpeaking, isListening, isProcessing, activeLevel, freqAvg });
-  stateRef.current = { state, isSpeaking, isListening, isProcessing, activeLevel, freqAvg };
+  const stateRef = useRef({ state, isSpeaking, isListening, isProcessing, activeLevel, freqAvg, activePersonas });
+  stateRef.current = { state, isSpeaking, isListening, isProcessing, activeLevel, freqAvg, activePersonas };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -245,6 +247,45 @@ export const HolographicCore: React.FC<HolographicCoreProps> = memo(({
     const pointCloud = new THREE.Points(geometry, particleShaderMat);
     masterGroup.add(pointCloud);
 
+    // =========================================================================
+    // 3. COMPANION SPECIALIST SATELLITE ORBS (CHRONO, CIPHER, ECHO)
+    // =========================================================================
+    const companionSatellites = [
+      { id: 'chrono', color: 0x0ea5e9, radius: 2.3, speed: 1.2, phase: 0.0 },
+      { id: 'cipher', color: 0x8b5cf6, radius: 2.8, speed: 0.9, phase: 2.1 },
+      { id: 'echo', color: 0xf59e0b, radius: 3.3, speed: 1.5, phase: 4.2 }
+    ];
+
+    const satelliteMeshes = companionSatellites.map(sat => {
+      const group = new THREE.Group();
+
+      // Satellite glowing core
+      const sphereGeo = new THREE.SphereGeometry(0.12, 16, 16);
+      const sphereMat = new THREE.MeshBasicMaterial({
+        color: sat.color,
+        transparent: true,
+        opacity: 0.95
+      });
+      const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+      group.add(sphere);
+
+      // Orbital glow halo
+      const haloGeo = new THREE.RingGeometry(0.14, 0.22, 24);
+      const haloMat = new THREE.MeshBasicMaterial({
+        color: sat.color,
+        transparent: true,
+        opacity: 0.45,
+        side: THREE.DoubleSide
+      });
+      const halo = new THREE.Mesh(haloGeo, haloMat);
+      group.add(halo);
+
+      group.scale.set(0, 0, 0);
+      masterGroup.add(group);
+
+      return { ...sat, group, scaleLerp: 0 };
+    });
+
     // Resize Handler
     const handleResize = () => {
       if (!container || !renderer || !camera) return;
@@ -274,7 +315,7 @@ export const HolographicCore: React.FC<HolographicCoreProps> = memo(({
       const delta = Math.min(0.1, (now - lastTime) * 0.001);
       lastTime = now;
       const elapsed = (now - startTime) * 0.001;
-      const { isSpeaking: curSpeaking, isListening: curListening, isProcessing: curProcessing, activeLevel: curAudioLevel } = stateRef.current;
+      const { isSpeaking: curSpeaking, isListening: curListening, isProcessing: curProcessing, activeLevel: curAudioLevel, activePersonas: curPersonas } = stateRef.current;
 
       // Update 360° OrbitControls
       controls.update();
@@ -291,6 +332,23 @@ export const HolographicCore: React.FC<HolographicCoreProps> = memo(({
       particleShaderMat.uniforms.uAudioLevel.value = curAudioLevel;
       particleShaderMat.uniforms.uSpeaking.value = currentSpeakingLerp;
       particleShaderMat.uniforms.uListening.value = currentListeningLerp;
+
+      // Satellite Orbits
+      satelliteMeshes.forEach(sat => {
+        const isActive = (curPersonas || []).includes(sat.id);
+        const targetScale = isActive ? (1.0 + (curSpeaking ? 0.25 * Math.sin(elapsed * 4) : 0)) : 0.0;
+        sat.scaleLerp += (targetScale - sat.scaleLerp) * Math.min(1.0, delta * 5.0);
+        sat.group.scale.setScalar(sat.scaleLerp);
+
+        if (sat.scaleLerp > 0.01) {
+          const speedMult = curProcessing ? 2.2 : 1.0;
+          const angle = elapsed * sat.speed * speedMult + sat.phase;
+          sat.group.position.x = Math.cos(angle) * sat.radius;
+          sat.group.position.z = Math.sin(angle) * sat.radius;
+          sat.group.position.y = Math.sin(angle * 1.8) * 0.4;
+          sat.group.lookAt(camera.position);
+        }
+      });
 
       // Gentle continuous 3D orbital drift
       const rotSpeed = curSpeaking ? 0.65 + curAudioLevel * 0.9 : curProcessing ? 1.1 : 0.3;

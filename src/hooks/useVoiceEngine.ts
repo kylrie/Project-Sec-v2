@@ -21,6 +21,8 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
   const [frequencies, setFrequencies] = useState(new Array(16).fill(0));
   const [isMicAvailable, setIsMicAvailable] = useState(true);
   const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
+  const [activities, setActivities] = useState<Array<{ personaId: string; action: string; status: 'running' | 'done' | 'error' }>>([]);
+  const [activePersonas, setActivePersonas] = useState<string[]>([]);
 
   const commandStartTimeRef = useRef(0);
   const settingsRef = useRef(settings);
@@ -62,6 +64,8 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     if (/^(stop|never mind|nevermind|cancel|abort|quiet|shut up)$/i.test(clean)) {
       microphoneManager.stop();
       setState('standby');
+      setActivities([]);
+      setActivePersonas([]);
       if (settingsRef.current.soundEffects) soundEffects.playBargeIn();
       return;
     }
@@ -79,11 +83,18 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       return;
     }
 
+    const detectedSpecialists = detectPersonas(clean);
+    setActivePersonas(detectedSpecialists);
+    setActivities(detectedSpecialists.map(p => ({
+      personaId: p,
+      action: p === 'ahri' ? 'Analyzing command...' : `Specialist ${p} evaluating task...`,
+      status: 'running'
+    })));
+
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 12000);
     try {
       const hist = storageService.getConversations();
-      const detectedSpecialists = detectPersonas(clean);
       const res = await fetch('/api/command', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
         body: JSON.stringify({
@@ -102,11 +113,20 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       const data: AhriResponse = await res.json();
       const reply = data.spokenReply || (data as any).reply || "Understood, sir. Systems updated.";
 
-      // Log & track specialist routing for UI activity HUD
-      if (data.routing) {
-        data.routing.forEach(r => {
-          console.log(`[Specialist:${r.persona}] ${r.action} (${r.status})`);
-        });
+      // Update specialist activity HUD with results
+      if (data.routing && data.routing.length > 0) {
+        setActivities(data.routing.map(r => ({
+          personaId: r.persona,
+          action: r.action,
+          status: r.status
+        })));
+        setTimeout(() => {
+          setActivities([]);
+          setActivePersonas([]);
+        }, 4500);
+      } else {
+        setActivities([]);
+        setActivePersonas([]);
       }
 
       const userTurn: ConversationTurn = { id: 'turn-' + Math.random().toString(36).slice(2,9), role: 'user', text: clean, timestamp: Date.now(), latencyMs: lat, intent: data.intent, actionData: data.actionData };
@@ -124,6 +144,11 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
       clearTimeout(t);
       const lat = Date.now() - commandStartTimeRef.current;
       setLastLatencyMs(lat);
+      setActivities(prev => prev.map(a => ({ ...a, status: 'error' })));
+      setTimeout(() => {
+        setActivities([]);
+        setActivePersonas([]);
+      }, 4000);
       const fb = "I've noted that, sir. All core executive functions are operating normally.";
       onTurnComplete({ id: 'turn-' + Math.random().toString(36).slice(2,9), role: 'user', text: clean, timestamp: Date.now(), latencyMs: lat, intent: 'fallback_response' });
       onTurnComplete({ id: 'turn-' + Math.random().toString(36).slice(2,9), role: 'friday', text: fb, timestamp: Date.now(), latencyMs: lat, intent: 'fallback_response' });
@@ -140,6 +165,8 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     }
     microphoneManager.stop();
     setState('standby');
+    setActivities([]);
+    setActivePersonas([]);
   }, []);
 
   const startManualListening = useCallback(() => {
@@ -225,6 +252,7 @@ export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseV
     state, setState,
     transcript: transcript || interimTranscript,
     audioLevel, frequencies, isMicAvailable, lastLatencyMs,
+    activities, activePersonas,
     startManualListening, stopManualListening, interrupt, speak, processCommand
   };
 }

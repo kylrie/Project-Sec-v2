@@ -42,6 +42,7 @@ const PrivacyVault = lazy(() => import('./components/PrivacyVault').then(m => ({
 const SecretaryBrainHub = lazy(() => import('./components/SecretaryBrainHub').then(m => ({ default: m.SecretaryBrainHub })));
 const VoiceOnboardingWizard = lazy(() => import('./components/VoiceOnboardingWizard').then(m => ({ default: m.VoiceOnboardingWizard })));
 
+import { LiveActivityFeed } from './components/LiveActivityFeed';
 import { useVoiceEngine } from './hooks/useVoiceEngine';
 import { storageService } from './services/storage';
 import { soundSynth } from './services/audioEffects';
@@ -141,6 +142,8 @@ export default function App() {
     frequencies,
     audioLevel,
     lastLatencyMs,
+    activities,
+    activePersonas,
     startManualListening,
     stopManualListening,
     processCommand,
@@ -207,6 +210,9 @@ export default function App() {
       {/* Cloud Realtime Sync Status Indicator */}
       <SyncStatus />
 
+      {/* Live Companion Specialist Activity Feed HUD */}
+      <LiveActivityFeed activities={activities} />
+
       {/* 1. ULTRA-MINIMAL TOP BAR */}
       <header className="w-full max-w-5xl mx-auto px-6 py-6 flex items-center justify-between z-20">
         {/* Left: Sleek Brand Logo */}
@@ -265,6 +271,7 @@ export default function App() {
               audioLevel={audioLevel}
               wakeWord={settings.wakeWord || 'Hey Ahri'}
               latencyMs={lastLatencyMs}
+              activePersonas={activePersonas}
               onCoreClick={handleCoreClick}
               onInterrupt={interrupt}
             />
