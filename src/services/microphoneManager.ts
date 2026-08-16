@@ -81,6 +81,7 @@ export class MicrophoneManager {
       this.stop();
     }
 
+    if (this.silenceTimer) clearTimeout(this.silenceTimer);
     this.mode = mode;
     this.callbacks = callbacks;
     this.wakeWordDetected = false;

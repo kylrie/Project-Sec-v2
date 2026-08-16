@@ -16,19 +16,19 @@ interface UseVoiceEngineProps {
 
 export function useVoiceEngine({ settings, onTurnComplete, onLocalAction }: UseVoiceEngineProps) {
   const [state, setState] = useState<VoiceState>('standby');
-  const [transcript, setTranscript] = useState('');
-  const [interimTranscript, setInterimTranscript] = useState('');
-  const [audioLevel, setAudioLevel] = useState(0);
-  const [frequencies, setFrequencies] = useState(new Array(16).fill(0));
-  const [isMicAvailable, setIsMicAvailable] = useState(true);
+  const [transcript, setTranscript] = useState<string>('');
+  const [interimTranscript, setInterimTranscript] = useState<string>('');
+  const [audioLevel, setAudioLevel] = useState<number>(0);
+  const [frequencies, setFrequencies] = useState<number[]>(new Array(16).fill(0));
+  const [isMicAvailable, setIsMicAvailable] = useState<boolean>(true);
   const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
   const [activities, setActivities] = useState<Array<{ personaId: string; action: string; status: 'running' | 'done' | 'error' }>>([]);
   const [activePersonas, setActivePersonas] = useState<string[]>([]);
 
-  const commandStartTimeRef = useRef(0);
-  const settingsRef = useRef(settings);
+  const commandStartTimeRef = useRef<number>(0);
+  const settingsRef = useRef<VoiceSettings>(settings);
   const processCommandRef = useRef<(text: string) => Promise<void>>(() => Promise.resolve());
-  const shouldRestartWakeWord = useRef(false);
+  const shouldRestartWakeWord = useRef<boolean>(false);
 
   useEffect(() => { settingsRef.current = settings; }, [settings]);
 
