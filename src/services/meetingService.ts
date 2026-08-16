@@ -284,15 +284,16 @@ class MeetingService {
     try {
       const initialized = await microphoneManager.initialize();
       if (!initialized) {
-        console.warn('Microphone not available for meeting recording');
-        this.startSpeechRecognition(onTranscript, onVolume);
+        console.warn('Microphone not available for meeting');
+        this.startSpeechRecognition(onTranscript);
         return { success: true };
       }
+
       this.mediaStream = microphoneManager.getStream();
       if (this.mediaStream) {
         this.setupAudioAnalysis(this.mediaStream, onVolume);
       }
-      this.startSpeechRecognition(onTranscript, onVolume);
+      this.startSpeechRecognition(onTranscript);
 
       storageService.logAuditEntry({
         category: 'Transcript',
@@ -303,8 +304,8 @@ class MeetingService {
 
       return { success: true, stream: this.mediaStream || undefined };
     } catch (err: any) {
-      console.warn('Microphone permission error or unavailable, starting simulated stream', err);
-      this.startSpeechRecognition(onTranscript, onVolume);
+      console.warn('Meeting mic fallback', err);
+      this.startSpeechRecognition(onTranscript);
       return { success: true };
     }
   }
@@ -381,41 +382,27 @@ class MeetingService {
   /**
    * Speech Recognition Engine — now delegates to MicrophoneManager
    */
-  private startSpeechRecognition(
-    onTranscript: (snippet: TranscriptSnippet) => void,
-    onVolume?: (db: number) => void
-  ) {
+  private startSpeechRecognition(onTranscript: (snippet: TranscriptSnippet) => void) {
     const speakers = this.getSpeakerProfiles();
     let lastSpeakerIndex = 0;
 
     microphoneManager.start('meeting', {
       onTranscript: (text: string, isFinal: boolean) => {
         if (!isFinal || !text.trim()) return;
-
         lastSpeakerIndex = (lastSpeakerIndex + 1) % speakers.length;
-        const currentSpeaker = speakers[lastSpeakerIndex] || speakers[0];
-
-        const snippet: TranscriptSnippet = {
+        const spk = speakers[lastSpeakerIndex] || speakers[0];
+        onTranscript({
           id: 'ts-' + Math.random().toString(36).substring(2, 9),
-          speaker: currentSpeaker.name,
-          speakerId: currentSpeaker.id,
+          speaker: spk.name,
+          speakerId: spk.id,
           timestamp: this.formatTimeSeconds(Math.round(Date.now() / 1000) % 3600),
           timeSeconds: Math.round(Date.now() / 1000) % 3600,
           text,
           confidence: 0.95,
           pitchLevel: lastSpeakerIndex % 2 === 0 ? 'mid' : 'high'
-        };
-
-        onTranscript(snippet);
+        });
       },
-      onVolume: (level: number) => {
-        if (onVolume) {
-          onVolume(Math.min(100, Math.round(level * 100)));
-        }
-      },
-      onError: (err: string) => {
-        console.warn('[MeetingService] Speech recognition error:', err);
-      }
+      onError: (err: string) => console.warn('[MeetingService] Speech error:', err)
     });
   }
 
@@ -427,7 +414,14 @@ class MeetingService {
       microphoneManager.stop();
     }
     this.activeRecognition = null;
-    this.mediaStream = null;
+    if (this.mediaStream) {
+      // DO NOT stop tracks — they belong to MicrophoneManager
+      this.mediaStream = null;
+    }
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      try { this.audioContext.close(); } catch {}
+      this.audioContext = null;
+    }
   }
 
   /**
