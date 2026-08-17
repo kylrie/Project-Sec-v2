@@ -23,6 +23,9 @@ COPY . .
 # Build the app (Vite frontend + Express backend)
 RUN npm run build
 
+# Set environment to production
+ENV NODE_ENV=production
+
 # Expose the port Railway will use
 EXPOSE 3000
 
